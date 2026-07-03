@@ -131,8 +131,8 @@ function MetaRing({ collapsed }: { collapsed: boolean }) {
         const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
         const today = now.toISOString().split('T')[0]
         const [vRes, pRes] = await Promise.all([
-          supabase.from('conversions').select('valor').eq('workspace_id', workspace.id).eq('status', 'paid').gte('dia', start).lte('dia', today),
-          supabase.from('user_prefs').select('meta_mensal_brl').eq('workspace_id', workspace.id).single(),
+          supabase.from('conversions').select('valor').eq('workspace_id', workspace!.id).eq('status', 'paid').gte('dia', start).lte('dia', today),
+          supabase.from('user_prefs').select('meta_mensal_brl').eq('workspace_id', workspace!.id).single(),
         ])
         const rev = (vRes.data || []).reduce((s: number, r: any) => s + Number(r.valor), 0)
         const tgt = pRes.data?.meta_mensal_brl || 0

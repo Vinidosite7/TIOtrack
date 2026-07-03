@@ -279,7 +279,7 @@ function RoasCard({ value, delta, loading, index }: {
           </div>
           <div style={{ position: 'relative', zIndex: 1, marginBottom: 10 }}>
             {loading ? <Sk h={32} mb={0}/> : (
-              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Fraunces', serif", color, textShadow: `0 0 32px ${color}66`, letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Syne', sans-serif", color, textShadow: `0 0 32px ${color}66`, letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
                 <AnimNum value={value} format={v => `${v.toFixed(2)}x`}/>
               </p>
             )}
@@ -513,8 +513,8 @@ export default function OverviewPage() {
 
   const loadKpi = useCallback(async (wid: string, p: Period) => {
     setLKpi(true)
-    const diff = p === 'hoje' ? 1 : p === '7d' ? 7 : 30
-    const from = diasAtras(diff), prev = diasAtras(diff * 2), h = hoje()
+    const diff = p === 'hoje' ? 0 : p === '7d' ? 7 : 30
+    const from = p === 'hoje' ? hoje() : diasAtras(diff), prev = diasAtras(diff === 0 ? 1 : diff * 2), h = hoje()
     const [sR, pR, vR, pvR] = await Promise.all([
       supabase.from('ad_spend_daily').select('spend,conversion_value').eq('workspace_id', wid).gte('dia', from).lte('dia', h),
       supabase.from('ad_spend_daily').select('spend,conversion_value').eq('workspace_id', wid).gte('dia', prev).lt('dia', from),
@@ -533,7 +533,7 @@ export default function OverviewPage() {
 
   const loadFeed = useCallback(async (wid: string, p: Period) => {
     setLFeed(true)
-    const diff = p === 'hoje' ? 1 : p === '7d' ? 7 : 30
+    const diff = p === 'hoje' ? 0 : p === '7d' ? 7 : 30
     const from = diasAtras(diff), h = hoje()
     const fromTs = new Date(); fromTs.setDate(fromTs.getDate() - diff)
     const [{ data: vendas }, { data: pendentes }] = await Promise.all([
@@ -996,7 +996,6 @@ export default function OverviewPage() {
       </div>
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&display=swap');
         @keyframes sk    { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
         @keyframes shimmerSweep { 0%,100%{background-position:200% center} 50%{background-position:-200% center} }
         @keyframes spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }

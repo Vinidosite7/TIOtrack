@@ -41,7 +41,8 @@ type Conversion = {
   id: string; created_at: string; dia: string | null
   customer_name: string | null; valor: number; status: string
   produto: string | null; utm_source: string | null
-  utm_campaign: string | null; payment_method: string | null
+  utm_campaign: string | null; utm_medium: string | null
+  utm_content: string | null; payment_method: string | null
   payment_platform: string | null
 }
 
@@ -110,12 +111,13 @@ export default function VendasPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos')
   const [page, setPage]               = useState(1)
   const [refreshing, setRefreshing]   = useState(false)
+  const [expanded, setExpanded]       = useState<string | null>(null)
   const PER_PAGE = 15
 
   const loadData = useCallback(async (wid: string, p: Period) => {
     setLoading(true)
-    const diff = p === 'hoje' ? 1 : p === '7d' ? 7 : 30
-    const from = diasAtras(diff), h = hoje()
+    const diff = p === 'hoje' ? 0 : p === '7d' ? 7 : 30
+    const from = p === 'hoje' ? hoje() : diasAtras(diff), h = hoje()
 
     const [{ data: convs }, { data: spends }] = await Promise.all([
       supabase.from('conversions').select('*').eq('workspace_id', wid).gte('dia', from).lte('dia', h).order('created_at', { ascending: false }),
@@ -185,7 +187,7 @@ export default function VendasPage() {
   }
 
   return (
-    <div style={{ padding: '24px 20px', maxWidth: 1100, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, position: 'relative', zIndex: 1 }}>
 
       {/* Header */}
       <motion.div {...fadeUp(0)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
@@ -233,7 +235,7 @@ export default function VendasPage() {
                     <Icon size={13} style={{ color }} strokeWidth={2}/>
                   </div>
                 </div>
-                <p style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Fraunces', serif", color, textShadow: `0 0 22px ${color}55`, position: 'relative', zIndex: 1, letterSpacing: '-0.02em' }}>
+                <p style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Syne', sans-serif", color, textShadow: `0 0 22px ${color}55`, position: 'relative', zIndex: 1, letterSpacing: '-0.02em' }}>
                   {loading ? '—' : <AnimNum value={value} format={format}/>}
                 </p>
               </div>
@@ -339,43 +341,58 @@ export default function VendasPage() {
               <motion.div key={c.id}
                 initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.22, delay: i * 0.03 }}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: i < paginated.length - 1 ? `1px solid ${T.border}` : 'none', transition: 'background 0.12s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-
-                {/* Icon */}
-                <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${st.color}12`, border: `1px solid ${st.color}20`, boxShadow: `0 0 8px ${st.color}15` }}>
-                  {isPaid ? <CheckCircle size={14} style={{ color: st.color }}/> : c.status === 'pending' ? <Clock size={14} style={{ color: st.color }}/> : <RotateCcw size={14} style={{ color: st.color }}/>}
-                </div>
-
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: T.text, fontFamily: "'DM Sans', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {c.customer_name || 'Cliente'}
-                    </span>
-                    {src && (
-                      <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.05)', color: T.muted, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>
-                        {src.toUpperCase()}
+                style={{ borderBottom: i < paginated.length - 1 ? `1px solid ${T.border}` : 'none', overflow: 'hidden' }}>
+                {/* Main row */}
+                <div
+                  onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', transition: 'background 0.12s', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {/* Icon */}
+                  <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${st.color}12`, border: `1px solid ${st.color}20` }}>
+                    {isPaid ? <CheckCircle size={14} style={{ color: st.color }}/> : c.status === 'pending' ? <Clock size={14} style={{ color: st.color }}/> : <RotateCcw size={14} style={{ color: st.color }}/>}
+                  </div>
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: T.text, fontFamily: "'DM Sans', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {c.customer_name || 'Cliente'}
                       </span>
-                    )}
+                      {src && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.05)', color: T.muted, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{src.toUpperCase()}</span>}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <span style={{ fontSize: 11, color: T.muted, fontFamily: "'DM Sans', sans-serif" }}>{timeAgo(c.created_at)}</span>
+                      {c.produto && <span style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>· {c.produto}</span>}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                    <span style={{ fontSize: 11, color: T.muted, fontFamily: "'DM Sans', sans-serif" }}>{timeAgo(c.created_at)}</span>
-                    {c.produto && <span style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{c.produto}</span>}
-                    {camp && <span style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{camp}</span>}
-                  </div>
+                  <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, fontWeight: 600, background: st.bg, color: st.color, border: `1px solid ${st.color}25`, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{st.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: st.color, fontFamily: "'Syne', sans-serif", textShadow: `0 0 12px ${st.color}40`, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{toBRL(c.valor ?? 0)}</span>
+                  <span style={{ fontSize: 11, color: expanded === c.id ? T.blue : T.muted, flexShrink: 0, transition: 'color 0.15s' }}>{expanded === c.id ? '▲' : '▼'}</span>
                 </div>
-
-                {/* Status badge */}
-                <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, fontWeight: 600, background: st.bg, color: st.color, border: `1px solid ${st.color}25`, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>
-                  {st.label}
-                </span>
-
-                {/* Valor */}
-                <span style={{ fontSize: 14, fontWeight: 700, color: st.color, fontFamily: "'Fraunces', serif", textShadow: `0 0 12px ${st.color}40`, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>
-                  {toBRL(c.valor ?? 0)}
-                </span>
+                {/* Expand panel */}
+                {expanded === c.id && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+                    style={{ background: 'rgba(59,130,246,0.03)', borderTop: `1px solid ${T.border}`, padding: '12px 16px 14px 64px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px 24px' }}>
+                      {[
+                        { l: 'Campanha',     v: decodeUtm(c.utm_campaign) },
+                        { l: 'Conjunto',     v: decodeUtm((c as any).utm_content) },
+                        { l: 'Ad / Criativo',v: decodeUtm((c as any).utm_term) },
+                        { l: 'Source',       v: decodeUtm((c as any).utm_source) },
+                        { l: 'Medium',       v: decodeUtm((c as any).utm_medium) },
+                        { l: 'Pagamento',    v: (c as any).payment_method },
+                        { l: 'Plataforma',   v: (c as any).payment_platform },
+                        { l: 'Produto',      v: (c as any).produto },
+                        { l: 'Data',         v: fmtTime(c.created_at) },
+                      ].filter(x => x.v).map(({ l, v }) => (
+                        <div key={l}>
+                          <p style={{ fontSize: 9, color: T.muted, fontFamily: "'Syne', sans-serif", letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>{l}</p>
+                          <p style={{ fontSize: 12, color: T.sub, fontFamily: "'DM Sans', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
               </motion.div>
             )
           })}
@@ -402,7 +419,6 @@ export default function VendasPage() {
       </motion.div>
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap');
         @keyframes spin { to { transform: rotate(360deg) } }
         @keyframes sk   { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
         @media (max-width: 640px) {
