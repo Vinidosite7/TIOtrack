@@ -6,6 +6,7 @@ import {
   CheckCircle, XCircle, AlertCircle,
   Wifi, WifiOff, DollarSign, Zap,
   ExternalLink, ChevronDown, ChevronRight,
+  Activity, ShieldCheck, Clock3, ArrowRight,
 } from 'lucide-react'
 import { T } from '@/lib/tokens'
 import { supabase } from '@/lib/supabase'
@@ -175,9 +176,52 @@ function AccountRow({ nome, id, balance, currency, status, warn }: { nome: strin
   )
 }
 
+function HealthPill({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      height: 24, padding: '0 9px', borderRadius: 999,
+      background: ok ? 'rgba(16,185,129,0.10)' : 'rgba(245,158,11,0.10)',
+      border: `1px solid ${ok ? 'rgba(16,185,129,0.22)' : 'rgba(245,158,11,0.22)'}`,
+      color: ok ? T.green : T.yellow,
+      fontSize: 11, fontWeight: 600,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: ok ? T.green : T.yellow, boxShadow: `0 0 5px ${ok ? T.green : T.yellow}` }}/>
+      {label}
+    </span>
+  )
+}
+
+function CommandMetric({ icon: Icon, label, value, detail, color }: {
+  icon: React.ElementType
+  label: string
+  value: string
+  detail: string
+  color: string
+}) {
+  return (
+    <div style={{
+      padding: 14, borderRadius: 12,
+      background: 'rgba(255,255,255,0.025)',
+      border: `1px solid ${T.border}`,
+      minWidth: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}12`, border: `1px solid ${color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={13} color={color}/>
+        </div>
+        <span style={{ fontSize: 10, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>{label}</span>
+      </div>
+      <p style={{ fontSize: 22, lineHeight: 1, color: T.text1, fontFamily: "'Syne', sans-serif", fontWeight: 800, marginBottom: 6 }}>{value}</p>
+      <p style={{ fontSize: 12, color: T.text3, lineHeight: 1.45 }}>{detail}</p>
+    </div>
+  )
+}
+
 // ── Page ───────────────────────────────────────────────────────
 export default function IntegracoesPage() {
   const { active: workspace } = useWorkspaceStore()
+  const [isMobile, setIsMobile] = useState(false)
 
   const [bcs, setBcs]               = useState<BC[]>([])
   const [metaConns, setMetaConns]   = useState<MetaConn[]>([])
@@ -201,6 +245,12 @@ export default function IntegracoesPage() {
   const [form, setForm]             = useState({ apelido: '', bc_id: '', access_token: '', proxy_url: '' })
 
   function showToast(type: 'ok'|'err', msg: string) { setToast({ type, msg }); setTimeout(() => setToast(null), 3500) }
+
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 820)
+    fn(); window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
 
   const load = useCallback(async (wid: string) => {
     setLoading(true)
@@ -308,6 +358,13 @@ export default function IntegracoesPage() {
   const tkContas  = bcs.flatMap(b => b.advertiser_accounts).length
   const warnTk    = bcs.flatMap(b => b.advertiser_accounts).some(a => (a.balance ?? 0) < 100)
   const warnMeta  = metaAccs.some(a => (a.balance ?? 0) < 20)
+  const activeSources = (bcs.length > 0 ? 1 : 0) + (metaConns.length > 0 ? 1 : 0)
+  const connectedAccounts = tkContas + metaAccs.length
+  const integrationWarnings = (warnTk ? 1 : 0) + (warnMeta ? 1 : 0)
+  const lastTkSync = bcs.map(b => b.last_sync).filter(Boolean).sort().at(-1)
+  const lastMetaSync = metaAccs.map(a => a.last_balance_sync).filter(Boolean).sort().at(-1)
+  const lastSync = [lastTkSync, lastMetaSync].filter(Boolean).sort().at(-1)
+  const activationPct = Math.round((activeSources / 3) * 100)
 
   // Status geral TikTok
   const tkStatus = bcs.length === 0 ? 'disconnected' : warnTk ? 'partial' : 'connected'
@@ -329,8 +386,12 @@ export default function IntegracoesPage() {
       <GridBg />
 
       {/* Topbar */}
-      <div style={{ height: 48, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', padding: '0 20px', flexShrink: 0, background: 'rgba(5,8,16,0.85)', backdropFilter: 'blur(12px)', position: 'relative', zIndex: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>Integrações</span>
+      <div style={{ minHeight: 54, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: isMobile ? '10px 14px' : '0 20px', flexShrink: 0, background: 'rgba(5,8,16,0.85)', backdropFilter: 'blur(12px)', position: 'relative', zIndex: 10 }}>
+        <div>
+          <span style={{ fontSize: 16, fontWeight: 800, color: T.text1, fontFamily: "'Syne', sans-serif", letterSpacing: '-0.02em' }}>Integrações</span>
+          <p style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>Conecte as fontes que alimentam ROAS, saldo e campanhas.</p>
+        </div>
+        <HealthPill ok={integrationWarnings === 0 && activeSources > 0} label={integrationWarnings > 0 ? `${integrationWarnings} atenção` : activeSources > 0 ? 'Operacional' : 'Configuração pendente'}/>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', zIndex: 1 }}>
@@ -342,10 +403,48 @@ export default function IntegracoesPage() {
           </div>
         )}
 
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'minmax(280px, 1.05fr) repeat(3, minmax(0, 0.75fr))',
+          gap: 12,
+          alignItems: 'stretch',
+        }}>
+          <div style={{
+            padding: 18,
+            borderRadius: 16,
+            background: 'linear-gradient(145deg, rgba(59,130,246,0.13), rgba(16,185,129,0.06) 55%, rgba(15,22,35,0.22))',
+            border: `1px solid ${T.border}`,
+            minHeight: 150,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}>
+            <div>
+              <p style={{ fontSize: 10, color: T.accent, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, marginBottom: 10 }}>Mapa de ativação</p>
+              <h2 style={{ color: T.text1, fontFamily: "'Syne', sans-serif", fontSize: 22, lineHeight: 1.12, marginBottom: 8, letterSpacing: '-0.02em' }}>
+                O TioTrack fica forte quando tráfego e vendas entram no mesmo lugar.
+              </h2>
+              <p style={{ color: T.text3, fontSize: 12.5, lineHeight: 1.55 }}>
+                TikTok e Meta já estão no trilho principal. Kwai entra como próximo canal planejado para mídia de vídeo curto.
+              </p>
+            </div>
+            <div style={{ marginTop: 18 }}>
+              <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                <div style={{ width: `${activationPct}%`, height: '100%', borderRadius: 99, background: activeSources > 0 ? T.green : T.accent, boxShadow: `0 0 12px ${activeSources > 0 ? T.green : T.accent}66` }}/>
+              </div>
+              <p style={{ fontSize: 11, color: T.text3, marginTop: 7 }}>{activeSources}/3 fontes de mídia no mapa</p>
+            </div>
+          </div>
+
+          <CommandMetric icon={Activity} label="Fontes ativas" value={`${activeSources}`} detail="TikTok e Meta conectados contam aqui." color={T.green}/>
+          <CommandMetric icon={ShieldCheck} label="Contas monitoradas" value={`${connectedAccounts}`} detail="Contas com saldo/status entrando no painel." color={T.accent}/>
+          <CommandMetric icon={Clock3} label="Última sync" value={lastSync ? timeAgo(lastSync) : '—'} detail={lastSync ? 'dados atualizados recentemente' : 'sincronize uma fonte para iniciar'} color={T.yellow}/>
+        </div>
+
         {/* Título seção */}
         <div>
           <p style={{ fontSize: 11, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 12 }}>Fontes de tráfego</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
 
             {/* ── TikTok Ads ── */}
             <div style={{ background: T.bgSurface, border: `1px solid ${tkStatus === 'connected' ? 'rgba(255,255,255,0.12)' : T.border}`, borderRadius: 14, overflow: 'hidden', boxShadow: tkStatus === 'connected' ? '0 4px 24px rgba(0,0,0,0.3)' : 'none' }}>
@@ -573,14 +672,43 @@ export default function IntegracoesPage() {
 
         {/* Em breve */}
         <div>
-          <p style={{ fontSize: 11, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 12 }}>Em breve</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+          <p style={{ fontSize: 11, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 12 }}>Próximos canais</p>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr 1fr', gap: 10 }}>
+            <div style={{ background: T.bgSurface, border: '1px solid rgba(255,107,53,0.24)', borderRadius: 14, padding: '16px 18px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at top right, rgba(255,107,53,0.12), transparent 42%)', pointerEvents: 'none' }}/>
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 11, background: 'rgba(255,107,53,0.14)', border: '1px solid rgba(255,107,53,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: 16, fontWeight: 900, color: '#FF6B35', fontFamily: "'Syne', sans-serif" }}>K</span>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: T.text1 }}>Kwai Ads</div>
+                      <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 20, background: 'rgba(255,107,53,0.12)', color: '#FF6B35', fontWeight: 700 }}>MAPEANDO API</span>
+                    </div>
+                    <p style={{ fontSize: 12, color: T.text3, lineHeight: 1.5 }}>Próximo canal de vídeo curto para acompanhar gasto, campanhas e ROAS junto com TikTok e Meta.</p>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 8 }}>
+                  {[
+                    ['Credenciais', 'OAuth ou token de anunciante'],
+                    ['Dados', 'campanha, conjunto, criativo e gasto diário'],
+                    ['Sync', 'Edge Function no mesmo padrão do TikTok'],
+                  ].map(([label, desc]) => (
+                    <div key={label} style={{ padding: 10, borderRadius: 9, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T.border}` }}>
+                      <p style={{ fontSize: 10, color: '#FF6B35', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>{label}</p>
+                      <p style={{ fontSize: 11, color: T.text3, lineHeight: 1.4 }}>{desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {[
-              { name: 'Google Ads', desc: 'Sincronize campanhas do Google Search e YouTube Ads.', color: '#4285F4' },
-              { name: 'Kwai Ads', desc: 'Conecte suas contas do Kwai Ads para vídeos curtos.', color: '#FF6B35' },
-              { name: 'Taboola', desc: 'Integração com native ads via Taboola.', color: '#4B9B4B' },
+              { name: 'Google Ads', desc: 'Campanhas do Google Search e YouTube Ads.', color: '#4285F4' },
+              { name: 'Taboola', desc: 'Native ads com gasto e conversões por campanha.', color: '#4B9B4B' },
             ].map(p => (
-              <div key={p.name} style={{ background: T.bgSurface, border: `1px solid ${T.border}`, borderRadius: 14, padding: '16px 18px', opacity: 0.5 }}>
+              <div key={p.name} style={{ background: T.bgSurface, border: `1px solid ${T.border}`, borderRadius: 14, padding: '16px 18px', opacity: 0.55 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: `${p.color}15`, border: `1px solid ${p.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: p.color }}>{p.name[0]}</span>

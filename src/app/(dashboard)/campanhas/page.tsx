@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { RefreshCw, Layers, Megaphone, Image, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  RefreshCw, Layers, Megaphone, Image, AlertCircle, ChevronDown, ChevronUp,
+  Search, ArrowUpRight, Plug, Target,
+} from 'lucide-react'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/store/workspace'
@@ -113,6 +116,7 @@ export default function CampanhasPage() {
   const [period, setPeriod]   = useState<Period>('7d')
   const [tab, setTab]         = useState<Tab>('campanhas')
   const [filter, setFilter]   = useState('all')
+  const [search, setSearch]   = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [tkData, setTkData]   = useState<any[]>([])
@@ -185,12 +189,26 @@ export default function CampanhasPage() {
     return source === 'tiktok' ? tkRows : metaRows
   })()
 
+  const visibleRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter(r =>
+      r.nome.toLowerCase().includes(q) ||
+      (r.conta ?? '').toLowerCase().includes(q) ||
+      r.score.toLowerCase().includes(q)
+    )
+  }, [rows, search])
+
   const totais = {
-    spend:       rows.reduce((s, r) => s + r.spend, 0),
-    receita:     rows.reduce((s, r) => s + r.receita, 0),
-    conversions: rows.reduce((s, r) => s + r.conversions, 0),
-    roas:        rows.reduce((s, r) => s + r.spend, 0) > 0 ? rows.reduce((s, r) => s + r.receita, 0) / rows.reduce((s, r) => s + r.spend, 0) : 0,
+    spend:       visibleRows.reduce((s, r) => s + r.spend, 0),
+    receita:     visibleRows.reduce((s, r) => s + r.receita, 0),
+    conversions: visibleRows.reduce((s, r) => s + r.conversions, 0),
+    roas:        visibleRows.reduce((s, r) => s + r.spend, 0) > 0 ? visibleRows.reduce((s, r) => s + r.receita, 0) / visibleRows.reduce((s, r) => s + r.spend, 0) : 0,
   }
+  const best = visibleRows.find(r => r.spend > 0 && r.roas >= 1)
+  const weak = [...visibleRows].filter(r => r.spend > 0).sort((a, b) => a.roas - b.roas)[0]
+  const scalable = visibleRows.filter(r => r.roas >= 2.5).length
+  const risky = visibleRows.filter(r => r.spend > 0 && r.roas < 1).length
 
   const filterOptions = source === 'tiktok' ? bcs.map(b => ({ id: b.id, label: b.apelido })) : metaAccs.map(a => ({ id: a.account_fb_id, label: a.nome }))
   const TABS = [
@@ -204,6 +222,11 @@ export default function CampanhasPage() {
 
       {/* Topbar */}
       <div style={{ height: 50, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 8, flexShrink: 0, background: 'rgba(8,8,14,0.88)', backdropFilter: 'blur(20px)', position: 'relative', zIndex: 10, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0, marginRight: 8 }}>
+          <span style={{ fontSize: 15, color: T.text, fontWeight: 800, fontFamily: T.display, letterSpacing: '-0.02em' }}>Campanhas</span>
+          <span style={{ fontSize: 10, color: T.muted, fontFamily: T.sans }}>{visibleRows.length} itens filtrados</span>
+        </div>
+
         {/* Source switcher */}
         <div style={{ display: 'flex', gap: 2, background: 'rgba(10,10,18,0.8)', border: `1px solid ${T.border}`, borderRadius: 8, padding: 2, flexShrink: 0 }}>
           {[{ key: 'todos', label: '⚡ Todos' }, { key: 'tiktok', label: '🎵 TikTok' }, { key: 'meta', label: '📘 Meta' }].map(s => (
@@ -224,6 +247,22 @@ export default function CampanhasPage() {
         )}
 
         <div style={{ flex: 1 }}/>
+
+        <div style={{ position: 'relative', width: 240, flexShrink: 0 }}>
+          <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.muted, pointerEvents: 'none' }}/>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar campanha..."
+            style={{
+              width: '100%', height: 30, padding: '0 10px 0 30px',
+              borderRadius: 8, border: `1px solid ${T.border}`,
+              background: 'rgba(10,10,18,0.8)',
+              color: T.text, outline: 'none',
+              fontSize: 11, fontFamily: T.sans,
+            }}
+          />
+        </div>
 
         {/* Período */}
         {(['hoje', '7d', '30d'] as Period[]).map(p => (
@@ -265,17 +304,71 @@ export default function CampanhasPage() {
         </div>
       )}
 
-      {/* Tabela */}
-      <div style={{ flex: 1, overflowY: 'auto', position: 'relative', zIndex: 1 }}>
-        {rows.length === 0 && !loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
-            <AlertCircle size={32} style={{ color: T.muted }}/>
-            <p style={{ fontSize: 13, color: T.muted, fontFamily: T.sans }}>
-              {source === 'tiktok' ? 'Conecte uma BC em Integrações e sincronize.' : 'Conecte uma conta Meta em Integrações.'}
+      {!loading && rows.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1.35fr 1fr 1fr',
+          gap: 10,
+          padding: '12px 16px',
+          borderBottom: `1px solid ${T.border}`,
+          background: 'rgba(8,8,14,0.45)',
+          flexShrink: 0,
+        }}>
+          <div style={{ padding: 14, borderRadius: 12, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.16)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Target size={14} color={T.blue}/>
+              <span style={{ fontSize: 11, color: T.blue, fontWeight: 700, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Decisão rápida</span>
+            </div>
+            <p style={{ fontSize: 13, color: T.text, fontWeight: 700, fontFamily: T.display, marginBottom: 5 }}>
+              {best ? `Escalar: ${best.nome}` : 'Aguardando campanha vencedora'}
+            </p>
+            <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans }}>
+              {best ? `ROAS ${best.roas.toFixed(2)}x com ${toBRL(best.spend)} em gasto.` : 'Quando houver gasto com retorno, o TioTrack destaca a melhor oportunidade.'}
             </p>
           </div>
+          <div style={{ padding: 14, borderRadius: 12, background: 'rgba(16,185,129,0.045)', border: `1px solid ${T.border}` }}>
+            <p style={{ fontSize: 10, color: T.muted, fontWeight: 700, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Prontas para escalar</p>
+            <p style={{ fontSize: 24, color: T.green, fontWeight: 800, fontFamily: T.display, marginBottom: 4 }}>{scalable}</p>
+            <p style={{ fontSize: 12, color: T.sub, fontFamily: T.sans }}>campanhas com ROAS acima de 2.5x</p>
+          </div>
+          <div style={{ padding: 14, borderRadius: 12, background: risky > 0 ? 'rgba(239,68,68,0.045)' : 'rgba(255,255,255,0.02)', border: `1px solid ${T.border}` }}>
+            <p style={{ fontSize: 10, color: T.muted, fontWeight: 700, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Atenção</p>
+            <p style={{ fontSize: 24, color: risky > 0 ? T.red : T.muted, fontWeight: 800, fontFamily: T.display, marginBottom: 4 }}>{risky}</p>
+            <p style={{ fontSize: 12, color: T.sub, fontFamily: T.sans }}>
+              {weak && risky > 0 ? `${weak.nome.slice(0, 32)} com ROAS ${weak.roas.toFixed(2)}x` : 'nenhum corte urgente no filtro atual'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tabela */}
+      <div style={{ flex: 1, overflowY: 'auto', position: 'relative', zIndex: 1 }}>
+        {visibleRows.length === 0 && !loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 360, gap: 14, padding: 24, textAlign: 'center' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {search ? <Search size={22} style={{ color: T.blue }}/> : <AlertCircle size={22} style={{ color: T.blue }}/>}
+            </div>
+            <div>
+              <p style={{ fontSize: 17, color: T.text, fontWeight: 800, fontFamily: T.display, marginBottom: 6 }}>
+                {search ? 'Nenhuma campanha encontrada' : 'Campanhas ainda sem dados'}
+              </p>
+              <p style={{ fontSize: 13, color: T.sub, fontFamily: T.sans, lineHeight: 1.5, maxWidth: 420 }}>
+                {search
+                  ? 'Tente outro termo ou limpe a busca para voltar ao ranking completo.'
+                  : source === 'tiktok'
+                    ? 'Conecte uma BC em Integrações e sincronize para ver gasto, receita e ROAS.'
+                    : 'Conecte uma conta Meta em Integrações para trazer campanhas do Facebook e Instagram Ads.'}
+              </p>
+            </div>
+            {!search && (
+              <button onClick={() => { window.location.href = '/integracoes' }}
+                style={{ height: 34, padding: '0 14px', borderRadius: 9, background: 'rgba(59,130,246,0.14)', border: '1px solid rgba(59,130,246,0.28)', color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.sans }}>
+                <Plug size={13}/> Abrir integrações <ArrowUpRight size={12}/>
+              </button>
+            )}
+          </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', minWidth: 920, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {['#', 'Nome', 'Score', 'Gasto', 'Receita', 'ROAS', 'Conv.', 'Impres.', 'CTR', 'CPM'].map((h, i) => (
@@ -296,7 +389,7 @@ export default function CampanhasPage() {
                     ))}
                   </tr>
                 ))
-                : rows.map((row, i) => <TableRow key={row.key} row={row} rank={i + 1}/>)
+                : visibleRows.map((row, i) => <TableRow key={row.key} row={row} rank={i + 1}/>)
               }
             </tbody>
           </table>

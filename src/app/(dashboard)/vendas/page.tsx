@@ -6,6 +6,7 @@ import {
   TrendingUp, TrendingDown, Search, X, Download,
   ChevronLeft, ChevronRight, ShoppingCart, Clock,
   CheckCircle, RotateCcw, AlertTriangle, RefreshCw,
+  Target, Radio, ArrowRight,
 } from 'lucide-react'
 import { motion, AnimatePresence, animate } from 'framer-motion'
 import {
@@ -24,8 +25,6 @@ const T = {
 }
 const cardStyle: React.CSSProperties = {
   background: T.bg, border: `1px solid ${T.border}`,
-  backdropFilter: 'blur(14px)',
-  boxShadow: '0 4px 28px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04)',
 }
 const fadeUp = (delay = 0) => ({
   initial: { opacity: 0, y: 16, filter: 'blur(4px)' },
@@ -46,8 +45,16 @@ type Conversion = {
   payment_platform: string | null
 }
 
+type RevenueSignalProps = {
+  label: string
+  value: string
+  detail: string
+  color: string
+  icon: React.ElementType
+}
+
 // ─── Helpers ──────────────────────────────────────────────────
-const toBRL    = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+const toBRL    = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const hoje     = () => new Date().toISOString().split('T')[0]
 const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0] }
 const fmtDia   = (s: string) => { const [,m,d] = s.split('-'); return `${d}/${m}` }
@@ -99,10 +106,32 @@ function ChartTip({ active, payload, label }: any) {
   )
 }
 
+function RevenueSignal({ label, value, detail, color, icon: Icon }: RevenueSignalProps) {
+  return (
+    <div style={{
+      padding: 14,
+      borderRadius: 12,
+      background: 'rgba(255,255,255,0.025)',
+      border: `1px solid ${T.border}`,
+      minWidth: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}12`, border: `1px solid ${color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={13} color={color}/>
+        </div>
+        <span style={{ fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>{label}</span>
+      </div>
+      <p style={{ fontSize: 22, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, lineHeight: 1, marginBottom: 6 }}>{value}</p>
+      <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.45, fontFamily: "'DM Sans', sans-serif" }}>{detail}</p>
+    </div>
+  )
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────
 export default function VendasPage() {
   const { active: workspace } = useWorkspaceStore()
 
+  const [isMobile, setIsMobile] = useState(false)
   const [loading, setLoading]   = useState(true)
   const [conversions, setConversions] = useState<Conversion[]>([])
   const [chartData, setChartData]     = useState<any[]>([])
@@ -113,6 +142,12 @@ export default function VendasPage() {
   const [refreshing, setRefreshing]   = useState(false)
   const [expanded, setExpanded]       = useState<string | null>(null)
   const PER_PAGE = 15
+
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 820)
+    fn(); window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
 
   const loadData = useCallback(async (wid: string, p: Period) => {
     setLoading(true)
@@ -128,7 +163,8 @@ export default function VendasPage() {
 
     // Chart — dia a dia
     const map: Record<string, { receita: number; pix: number }> = {}
-    for (let i = diff - 1; i >= 0; i--) {
+    const days = p === 'hoje' ? 1 : diff
+    for (let i = days - 1; i >= 0; i--) {
       const d = diasAtras(i)
       map[d] = { receita: 0, pix: 0 }
     }
@@ -157,7 +193,14 @@ export default function VendasPage() {
 
   // Filtros
   const filtered = conversions.filter(c => {
-    const matchSearch = !search || (c.customer_name?.toLowerCase().includes(search.toLowerCase()) || c.produto?.toLowerCase().includes(search.toLowerCase()) || decodeUtm(c.utm_campaign)?.toLowerCase().includes(search.toLowerCase()))
+    const q = search.toLowerCase()
+    const matchSearch = !search || (
+      c.customer_name?.toLowerCase().includes(q) ||
+      c.produto?.toLowerCase().includes(q) ||
+      c.payment_platform?.toLowerCase().includes(q) ||
+      decodeUtm(c.utm_source)?.toLowerCase().includes(q) ||
+      decodeUtm(c.utm_campaign)?.toLowerCase().includes(q)
+    )
     const matchStatus = statusFilter === 'todos' || c.status === statusFilter
     return matchSearch && matchStatus
   })
@@ -165,10 +208,21 @@ export default function VendasPage() {
   const totalPages = Math.ceil(filtered.length / PER_PAGE)
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
-  const receita  = conversions.filter(c => c.status === 'paid').reduce((s, c) => s + (c.valor ?? 0), 0)
-  const pix      = conversions.filter(c => c.status === 'pending').reduce((s, c) => s + (c.valor ?? 0), 0)
-  const reemb    = conversions.filter(c => c.status === 'refunded' || c.status === 'chargeback').reduce((s, c) => s + (c.valor ?? 0), 0)
-  const totalVendas = conversions.filter(c => c.status === 'paid').length
+  const receita  = filtered.filter(c => c.status === 'paid').reduce((s, c) => s + (c.valor ?? 0), 0)
+  const pix      = filtered.filter(c => c.status === 'pending').reduce((s, c) => s + (c.valor ?? 0), 0)
+  const reemb    = filtered.filter(c => c.status === 'refunded' || c.status === 'chargeback').reduce((s, c) => s + (c.valor ?? 0), 0)
+  const totalVendas = filtered.filter(c => c.status === 'paid').length
+  const pendingCount = filtered.filter(c => c.status === 'pending').length
+  const problemCount = filtered.filter(c => c.status === 'refunded' || c.status === 'chargeback').length
+  const ticketMedio = totalVendas > 0 ? receita / totalVendas : 0
+  const captureRate = filtered.length > 0 ? Math.round((totalVendas / filtered.length) * 100) : 0
+  const chartHasData = chartData.some(d => (d.receita ?? 0) > 0 || (d.pix ?? 0) > 0)
+  const sourceMap = filtered.reduce((acc: Record<string, number>, c) => {
+    const source = decodeUtm(c.utm_source) || c.payment_platform || 'sem origem'
+    acc[source] = (acc[source] ?? 0) + (c.status === 'paid' ? c.valor ?? 0 : 0)
+    return acc
+  }, {})
+  const topSource = Object.entries(sourceMap).sort((a, b) => b[1] - a[1])[0]
 
   function exportCSV() {
     const rows = [
@@ -187,7 +241,7 @@ export default function VendasPage() {
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, position: 'relative', zIndex: 1 }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px 88px' : '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, position: 'relative', zIndex: 1 }}>
 
       {/* Header */}
       <motion.div {...fadeUp(0)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
@@ -198,7 +252,7 @@ export default function VendasPage() {
             {' · '}{conversions.length} registros
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {/* Período */}
           {(['hoje', '7d', '30d'] as Period[]).map(p => (
             <button key={p} onClick={() => { setPeriod(p); setPage(1) }}
@@ -218,7 +272,7 @@ export default function VendasPage() {
       </motion.div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
         {[
           { label: 'Receita',    value: receita,      color: T.green,  icon: TrendingUp,   format: toBRL },
           { label: 'PIX Gerado', value: pix,          color: T.amber,  icon: Clock,        format: toBRL },
@@ -226,16 +280,16 @@ export default function VendasPage() {
           { label: 'Vendas',     value: totalVendas,  color: T.blue,   icon: ShoppingCart, format: (v: number) => `${Math.round(v)}` },
         ].map(({ label, value, color, icon: Icon, format }, i) => (
           <motion.div key={label} {...fadeUp(0.06 + i * 0.06)}>
-            <SpotlightCard spotlightColor={`${color}14`} style={{ ...cardStyle, borderRadius: 16, height: '100%' }}>
+            <SpotlightCard spotlightColor={`${color}14`} style={{ ...cardStyle, borderRadius: 14, height: '100%' }}>
               <div style={{ padding: 20, position: 'relative', overflow: 'hidden' }}>
                 <GlowCorner color={`${color}20`} position="bottom-right"/>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, position: 'relative', zIndex: 1 }}>
                   <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Syne', sans-serif" }}>{label}</span>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}14`, border: `1px solid ${color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 12px ${color}20` }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}12`, border: `1px solid ${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Icon size={13} style={{ color }} strokeWidth={2}/>
                   </div>
                 </div>
-                <p style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Syne', sans-serif", color, textShadow: `0 0 22px ${color}55`, position: 'relative', zIndex: 1, letterSpacing: '-0.02em' }}>
+                <p style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Syne', sans-serif", color: T.text, position: 'relative', zIndex: 1, letterSpacing: '-0.02em' }}>
                   {loading ? '—' : <AnimNum value={value} format={format}/>}
                 </p>
               </div>
@@ -244,9 +298,52 @@ export default function VendasPage() {
         ))}
       </div>
 
+      {!loading && (
+        <motion.div {...fadeUp(0.18)} style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1.15fr repeat(3, minmax(0, 0.75fr))',
+          gap: 12,
+        }}>
+          <div style={{
+            padding: 18,
+            borderRadius: 14,
+            background: 'linear-gradient(145deg, rgba(16,185,129,0.12), rgba(59,130,246,0.07) 58%, rgba(10,10,18,0.22))',
+            border: `1px solid ${T.border}`,
+            minHeight: 132,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}>
+            <div>
+              <p style={{ fontSize: 10, color: T.green, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 800, marginBottom: 10 }}>
+                Caixa em tempo real
+              </p>
+              <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: isMobile ? 19 : 22, lineHeight: 1.12, color: T.text, margin: 0, letterSpacing: '-0.02em' }}>
+                {receita > 0 ? `${toBRL(receita)} confirmados no filtro atual.` : 'Aguardando as primeiras vendas confirmadas.'}
+              </h2>
+              <p style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55, marginTop: 8, fontFamily: "'DM Sans', sans-serif" }}>
+                {pix > 0
+                  ? `${toBRL(pix)} ainda esta em PIX pendente.`
+                  : pendingCount > 0
+                    ? `${pendingCount} venda${pendingCount > 1 ? 's' : ''} pendente${pendingCount > 1 ? 's' : ''} para acompanhar.`
+                    : 'Quando o checkout enviar eventos, esta tela vira o lado financeiro do ROAS.'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: T.green, padding: '3px 9px', borderRadius: 999, background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.22)', fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>{captureRate}% captura</span>
+              <span style={{ fontSize: 11, color: problemCount > 0 ? T.red : T.muted, padding: '3px 9px', borderRadius: 999, background: problemCount > 0 ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.035)', border: `1px solid ${T.border}`, fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>{problemCount} reversões</span>
+            </div>
+          </div>
+
+          <RevenueSignal icon={Target} label="Ticket médio" value={ticketMedio > 0 ? toBRL(ticketMedio) : '—'} detail="média das vendas pagas no filtro" color={T.blue}/>
+          <RevenueSignal icon={Clock} label="PIX pendente" value={`${pendingCount}`} detail={pix > 0 ? `${toBRL(pix)} aguardando confirmação` : 'sem pendências no filtro'} color={T.amber}/>
+          <RevenueSignal icon={Radio} label="Origem forte" value={topSource ? topSource[0] : '—'} detail={topSource ? `${toBRL(topSource[1])} em receita paga` : 'sem origem de venda ainda'} color={T.cyan}/>
+        </motion.div>
+      )}
+
       {/* Chart */}
       <motion.div {...fadeUp(0.22)}>
-        <SpotlightCard style={{ ...cardStyle, borderRadius: 16 }}>
+        <SpotlightCard style={{ ...cardStyle, borderRadius: 14 }}>
           <div style={{ padding: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
@@ -264,6 +361,25 @@ export default function VendasPage() {
             </div>
             {loading ? (
               <div style={{ height: 160, borderRadius: 8, background: 'rgba(255,255,255,0.03)', animation: 'sk 1.4s ease-in-out infinite', backgroundSize: '200% 100%' }}/>
+            ) : !chartHasData ? (
+              <div style={{
+                height: 160,
+                borderRadius: 12,
+                border: `1px dashed ${T.border}`,
+                background: 'linear-gradient(180deg, rgba(16,185,129,0.06), rgba(10,10,18,0.02))',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                padding: 18,
+              }}>
+                <div>
+                  <p style={{ fontSize: 13, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, marginBottom: 6 }}>Sem receita neste período</p>
+                  <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.45, maxWidth: 420, fontFamily: "'DM Sans', sans-serif" }}>
+                    Assim que o webhook do checkout enviar vendas pagas ou PIX gerados, o gráfico mostra a curva diária.
+                  </p>
+                </div>
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }} barCategoryGap="30%">
@@ -292,7 +408,7 @@ export default function VendasPage() {
 
       {/* Tabela */}
       <motion.div {...fadeUp(0.3)}>
-        <SpotlightCard style={{ ...cardStyle, borderRadius: 16, overflow: 'hidden' }}>
+        <SpotlightCard style={{ ...cardStyle, borderRadius: 14, overflow: 'hidden' }}>
           {/* Filtros */}
           <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
             {/* Search */}
@@ -327,9 +443,31 @@ export default function VendasPage() {
               {[1,2,3,4,5].map(i => <div key={i} style={{ height: 52, borderRadius: 8, background: 'rgba(255,255,255,0.03)', animation: 'sk 1.4s ease-in-out infinite', backgroundSize: '200% 100%' }}/>)}
             </div>
           ) : paginated.length === 0 ? (
-            <div style={{ padding: '48px 0', textAlign: 'center' }}>
-              <ShoppingCart size={32} style={{ color: T.muted, margin: '0 auto 12px', display: 'block' }}/>
-              <p style={{ fontSize: 13, color: T.muted, fontFamily: "'DM Sans', sans-serif" }}>Nenhuma venda encontrada</p>
+            <div style={{ padding: '52px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 50, height: 50, borderRadius: 15, background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {search ? <Search size={22} style={{ color: T.blue }}/> : <ShoppingCart size={22} style={{ color: T.blue }}/>}
+              </div>
+              <div>
+                <p style={{ fontSize: 17, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, marginBottom: 6 }}>
+                  {search || statusFilter !== 'todos' ? 'Nada encontrado nesse filtro' : 'Nenhuma venda recebida ainda'}
+                </p>
+                <p style={{ fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 440, fontFamily: "'DM Sans', sans-serif" }}>
+                  {search || statusFilter !== 'todos'
+                    ? 'Limpe a busca ou troque o status para voltar à lista completa.'
+                    : 'Conecte o webhook do checkout para o TioTrack receber vendas, PIX pendente, reembolso e UTMs automaticamente.'}
+                </p>
+              </div>
+              {(search || statusFilter !== 'todos') ? (
+                <button onClick={() => { setSearch(''); setStatusFilter('todos'); setPage(1) }}
+                  style={{ height: 34, padding: '0 14px', borderRadius: 9, background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  Limpar filtros <X size={12}/>
+                </button>
+              ) : (
+                <button onClick={() => { window.location.href = '/integracoes' }}
+                  style={{ height: 34, padding: '0 14px', borderRadius: 9, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: T.green, display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  Ver integrações <ArrowRight size={12}/>
+                </button>
+              )}
             </div>
           ) : paginated.map((c, i) => {
             const st = STATUS[c.status] || STATUS.cancelled
@@ -366,7 +504,7 @@ export default function VendasPage() {
                     </div>
                   </div>
                   <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, fontWeight: 600, background: st.bg, color: st.color, border: `1px solid ${st.color}25`, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{st.label}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: st.color, fontFamily: "'Syne', sans-serif", textShadow: `0 0 12px ${st.color}40`, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{toBRL(c.valor ?? 0)}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: st.color, fontFamily: "'Syne', sans-serif", flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{toBRL(c.valor ?? 0)}</span>
                   <span style={{ fontSize: 11, color: expanded === c.id ? T.blue : T.muted, flexShrink: 0, transition: 'color 0.15s' }}>{expanded === c.id ? '▲' : '▼'}</span>
                 </div>
                 {/* Expand panel */}

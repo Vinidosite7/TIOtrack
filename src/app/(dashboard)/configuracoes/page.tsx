@@ -69,11 +69,39 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   )
 }
 
+function ConfigSignal({ icon: Icon, label, value, detail, color }: {
+  icon: React.ElementType
+  label: string
+  value: string
+  detail: string
+  color: string
+}) {
+  return (
+    <div style={{
+      padding: 14,
+      borderRadius: 12,
+      background: 'rgba(255,255,255,0.025)',
+      border: `1px solid ${T.border}`,
+      minWidth: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}12`, border: `1px solid ${color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={13} color={color}/>
+        </div>
+        <span style={{ fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>{label}</span>
+      </div>
+      <p style={{ fontSize: 22, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, lineHeight: 1, marginBottom: 6 }}>{value}</p>
+      <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.45, fontFamily: "'DM Sans', sans-serif" }}>{detail}</p>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────
 export default function ConfiguracoesPage() {
   const router = useRouter()
   const { active: workspace, setActive, list } = useWorkspaceStore()
 
+  const [isMobile, setIsMobile] = useState(false)
   const [loading, setLoading]   = useState(true)
   const [tab, setTab]           = useState('perfil')
   const [userAuth, setUserAuth] = useState<any>(null)
@@ -97,6 +125,12 @@ export default function ConfiguracoesPage() {
   const webhookUrl = workspace?.id
     ? `https://tiotrack.vercel.app/api/webhook?wid=${workspace.id}`
     : ''
+
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 820)
+    fn(); window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
 
   async function load() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -159,6 +193,15 @@ export default function ConfiguracoesPage() {
 
   const initials = profileForm.full_name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     || userAuth?.email?.charAt(0)?.toUpperCase() || '?'
+  const metaNumber = metaMensal ? Number(metaMensal) : 0
+  const metaDaily = metaNumber > 0 ? metaNumber / new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate() : 0
+  const alertCount = Object.values(alertas).filter(Boolean).length
+  const setupScore = [
+    Boolean(profileForm.full_name),
+    Boolean(workspace?.id),
+    metaNumber > 0,
+    Boolean(webhookUrl),
+  ].filter(Boolean).length
 
   if (loading) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '24px 20px' }}>
@@ -170,13 +213,13 @@ export default function ConfiguracoesPage() {
   )
 
   return (
-    <div style={{ padding: '24px 20px', maxWidth: 900, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ padding: isMobile ? '16px 12px 88px' : '24px 20px', maxWidth: 1040, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Header */}
       <motion.div {...fadeUp(0)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
         <div>
           <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 800, color: T.text, letterSpacing: '-0.03em', margin: 0 }}>Configurações</h1>
-          <p style={{ fontSize: 13, color: T.muted, fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>Gerencie sua conta e workspace</p>
+          <p style={{ fontSize: 13, color: T.muted, fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>Controle meta, webhook, alertas e segurança do painel</p>
         </div>
         <AnimatePresence>
           {saved && (
@@ -188,7 +231,47 @@ export default function ConfiguracoesPage() {
         </AnimatePresence>
       </motion.div>
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <motion.div {...fadeUp(0.04)} style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'minmax(280px, 1.05fr) repeat(3, minmax(0, 0.72fr))',
+        gap: 12,
+        alignItems: 'stretch',
+      }}>
+        <div style={{
+          padding: 18,
+          borderRadius: 16,
+          background: 'linear-gradient(145deg, rgba(59,130,246,0.13), rgba(167,139,250,0.07) 55%, rgba(8,8,14,0.22))',
+          border: `1px solid ${T.border}`,
+          minHeight: 148,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+        }}>
+          <div>
+            <p style={{ fontSize: 10, color: T.violet, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 800, marginBottom: 10 }}>
+              Centro de controle
+            </p>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: isMobile ? 19 : 22, lineHeight: 1.12, color: T.text, margin: 0, letterSpacing: '-0.02em' }}>
+              {setupScore >= 4 ? 'Seu painel está pronto para operar.' : 'Faltam poucos ajustes para o painel trabalhar sozinho.'}
+            </h2>
+            <p style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55, marginTop: 8, fontFamily: "'DM Sans', sans-serif" }}>
+              Meta mensal, webhook e alertas alimentam as decisões que aparecem no overview, vendas e campanhas.
+            </p>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+              <div style={{ width: `${(setupScore / 4) * 100}%`, height: '100%', borderRadius: 99, background: setupScore >= 4 ? T.green : T.blue, boxShadow: `0 0 12px ${setupScore >= 4 ? T.green : T.blue}66` }}/>
+            </div>
+            <p style={{ fontSize: 11, color: T.muted, marginTop: 7, fontFamily: "'DM Sans', sans-serif" }}>{setupScore}/4 pontos essenciais configurados</p>
+          </div>
+        </div>
+
+        <ConfigSignal icon={Target} label="Meta mensal" value={metaNumber > 0 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(metaNumber) : '—'} detail={metaDaily > 0 ? `${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(metaDaily)}/dia` : 'defina uma meta para ativar projeções'} color={T.violet}/>
+        <ConfigSignal icon={Webhook} label="Webhook" value={webhookUrl ? 'Ativo' : '—'} detail={webhookUrl ? 'checkout pode enviar vendas' : 'workspace necessário'} color={T.amber}/>
+        <ConfigSignal icon={Bell} label="Alertas" value={`${alertCount}`} detail="preferências ligadas no painel" color={T.green}/>
+      </motion.div>
+
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
 
         {/* Sidebar de tabs — desktop */}
         <motion.div {...fadeUp(0.08)} style={{ width: 200, flexShrink: 0, display: 'none' }} className="config-sidebar">
@@ -308,25 +391,39 @@ export default function ConfiguracoesPage() {
 
                     {/* Meta mensal */}
                     <div style={{ padding: 16, borderRadius: 12, background: 'rgba(59,130,246,0.04)', border: `1px solid rgba(59,130,246,0.12)` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Target size={13} style={{ color: T.violet }}/>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Target size={14} style={{ color: T.violet }}/>
                         </div>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: "'DM Sans', sans-serif" }}>Meta mensal de receita</p>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: "'DM Sans', sans-serif" }}>Meta mensal de receita</p>
+                          <p style={{ fontSize: 11, color: T.muted, marginTop: 3, fontFamily: "'DM Sans', sans-serif", lineHeight: 1.45 }}>
+                            Usada no overview, sidebar e alertas de ritmo do mês.
+                          </p>
+                        </div>
+                        {metaDaily > 0 && (
+                          <span style={{ fontSize: 11, color: T.violet, background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.22)', borderRadius: 999, padding: '4px 9px', fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(metaDaily)}/dia
+                          </span>
+                        )}
                       </div>
                       <input value={metaMensal} onChange={e => setMetaMensal(e.target.value)} type="number" placeholder="Ex: 10000" style={inp} onFocus={focusIn} onBlur={focusOut}/>
-                      <p style={{ fontSize: 11, color: T.muted, marginTop: 6, fontFamily: "'DM Sans', sans-serif" }}>Usado no ring de progresso da sidebar e alertas automáticos</p>
                     </div>
 
                     {/* Webhook */}
                     <div style={{ padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.border}` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Webhook size={13} style={{ color: T.amber }}/>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Webhook size={14} style={{ color: T.amber }}/>
                         </div>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: "'DM Sans', sans-serif" }}>URL do Webhook (SharkBot)</p>
+                        <div>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: "'DM Sans', sans-serif" }}>URL do Webhook</p>
+                          <p style={{ fontSize: 11, color: T.muted, marginTop: 3, fontFamily: "'DM Sans', sans-serif", lineHeight: 1.45 }}>
+                            Use no checkout para enviar vendas, PIX, reembolsos e UTMs.
+                          </p>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <input readOnly value={webhookUrl} style={{ ...inp, flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, opacity: 0.7 }}/>
                         <button onClick={copyWebhook}
                           style={{ padding: '10px 14px', borderRadius: 10, background: copied ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.04)', border: `1px solid ${copied ? 'rgba(16,185,129,0.25)' : T.border}`, color: copied ? T.green : T.muted, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, flexShrink: 0, fontFamily: "'DM Sans', sans-serif" }}>

@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence, animate as fmAnimate } from 'framer-motion'
 import {
   TrendingUp, TrendingDown, RefreshCw, AlertTriangle,
-  Zap, GripVertical, Eye, EyeOff, Settings2, Check,
+  Zap, GripVertical, Eye, EyeOff, Settings2, Check, X,
   Trophy, Minimize2, Maximize2,
   BookOpen, Bell, Key, BarChart2, Percent, Activity,
+  Plug, Target, ArrowRight,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
@@ -46,9 +47,7 @@ const T = {
 const cardBase: React.CSSProperties = {
   background: T.card,
   border: `1px solid ${T.border}`,
-  borderRadius: 16,
-  backdropFilter: 'blur(20px)',
-  boxShadow: '0 4px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03)',
+  borderRadius: 14,
   overflow: 'hidden',
   position: 'relative',
 }
@@ -68,23 +67,25 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: 'kpi_lucro',       label: 'KPI Lucro Líquido',   visible: true },
   { id: 'kpi_roas',        label: 'KPI ROAS',            visible: true },
   { id: 'grafico_receita', label: 'Gráfico 14 dias',     visible: true },
-  { id: 'activity_feed',   label: 'Atividade em Tempo Real', visible: true },
-  { id: 'melhor_campanha', label: 'Melhor Campanha',     visible: true },
-  { id: 'top3_campanhas',  label: 'Top 3 Campanhas',     visible: true },
-  { id: 'cpv_medio',       label: 'CPV Médio',           visible: true },
-  { id: 'projecao_mes',    label: 'Projeção do Mês',     visible: true },
-  { id: 'meta_dia',        label: 'Meta do Dia',         visible: true },
-  { id: 'saldo_bcs',       label: 'Saldo TikTok BCs',   visible: true },
-  { id: 'saldo_meta',      label: 'Saldo Meta Ads',      visible: true },
-  { id: 'alertas',         label: 'Alertas',             visible: true },
-  { id: 'diario_rapido',   label: 'Diário Rápido',       visible: true },
-  { id: 'token_expiry',    label: 'Status dos Tokens',   visible: true },
-  { id: 'score_criativos', label: 'Score de Campanhas',  visible: true },
-  { id: 'meta_mes',        label: 'Meta do Mês',         visible: true },
+  { id: 'activity_feed',   label: 'Atividade em Tempo Real', visible: false },
+  { id: 'melhor_campanha', label: 'Melhor Campanha',     visible: false },
+  { id: 'top3_campanhas',  label: 'Top 3 Campanhas',     visible: false },
+  { id: 'cpv_medio',       label: 'CPV Médio',           visible: false },
+  { id: 'projecao_mes',    label: 'Projeção do Mês',     visible: false },
+  { id: 'meta_dia',        label: 'Meta do Dia',         visible: false },
+  { id: 'saldo_bcs',       label: 'Saldo TikTok BCs',   visible: false },
+  { id: 'saldo_meta',      label: 'Saldo Meta Ads',      visible: false },
+  { id: 'alertas',         label: 'Alertas',             visible: false },
+  { id: 'diario_rapido',   label: 'Diário Rápido',       visible: false },
+  { id: 'token_expiry',    label: 'Status dos Tokens',   visible: false },
+  { id: 'score_criativos', label: 'Score de Campanhas',  visible: false },
+  { id: 'meta_mes',        label: 'Meta do Mês',         visible: false },
 ]
 
+const LAYOUT_VERSION = 'v3'
+
 // ─── Helpers ──────────────────────────────────────────────────
-const toBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+const toBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const hoje  = () => new Date().toISOString().split('T')[0]
 const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0] }
 const diasNoMes = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth()+1, 0).getDate() }
@@ -141,96 +142,56 @@ function GlowCorner({ color }: { color: string }) {
   )
 }
 
-// ─── SpotlightCard (igual BossFlow, sem Tailwind) ─────────────
-function SCard({ children, style = {}, glowColor = 'rgba(124,110,247,0.12)' }: {
+// ─── SCard (flat, estilo UTMify) ──────────────────────────────
+function SCard({ children, style = {} }: {
   children: React.ReactNode; style?: React.CSSProperties; glowColor?: string
 }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState({ x: -999, y: -999 })
-  const [hov, setHov] = useState(false)
-
-  const onMove = useCallback((e: MouseEvent) => {
-    const r = ref.current?.getBoundingClientRect()
-    if (!r) return
-    setPos({ x: e.clientX - r.left, y: e.clientY - r.top })
-  }, [])
-
-  useEffect(() => {
-    const el = ref.current; if (!el) return
-    const enter = () => setHov(true)
-    const leave = () => { setHov(false); setPos({ x: -999, y: -999 }) }
-    el.addEventListener('mousemove', onMove)
-    el.addEventListener('mouseenter', enter)
-    el.addEventListener('mouseleave', leave)
-    return () => {
-      el.removeEventListener('mousemove', onMove)
-      el.removeEventListener('mouseenter', enter)
-      el.removeEventListener('mouseleave', leave)
-    }
-  }, [onMove])
-
   return (
-    <div ref={ref} style={{
+    <div style={{
       ...cardBase,
-      border: `1px solid ${hov ? 'rgba(148,163,184,0.16)' : T.border}`,
-      transition: 'border-color 0.2s',
+      border: `1px solid ${T.border}`,
       height: '100%',
       boxSizing: 'border-box',
       ...style,
     }}>
-      {/* Spotlight */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1, borderRadius: 'inherit',
-        background: `radial-gradient(280px circle at ${pos.x}px ${pos.y}px, ${glowColor}, transparent 68%)`,
-        transition: hov ? 'none' : 'background 0.4s',
-      }}/>
-      {/* Grain */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2, borderRadius: 'inherit',
-        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.045'/%3E%3C/svg%3E")`,
-        backgroundSize: '140px 140px', mixBlendMode: 'overlay' as const, opacity: 0.75,
-      }}/>
-      <div style={{ position: 'relative', zIndex: 3 }}>{children}</div>
+      <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
     </div>
   )
 }
 
-// ─── KPI Card (estrutura exata BossFlow) ──────────────────────
+// ─── KPI Card (flat, estilo UTMify) ───────────────────────────
 function KpiCard({ label, value, delta, pos: isPos, color, icon: Icon, loading, index = 0 }: {
   label: string; value: number; format: (v: number) => string; delta: string
   pos: boolean; color: string; icon: React.ElementType; loading?: boolean; index?: number
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      transition={{ duration: 0.5, delay: index * 0.07, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
     >
-      <SCard glowColor={`${color}16`} style={{ height: '100%' }}>
-        <div style={{ padding: 20, position: 'relative', overflow: 'hidden' }}>
-          <GlowCorner color={`${color}22`}/>
-
+      <SCard style={{ height: '100%' }}>
+        <div style={{ padding: 20 }}>
           {/* Top row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: T.display }}>
               {label}
             </span>
             <div style={{
               width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-              background: `${color}14`, border: `1px solid ${color}25`,
+              background: `${color}12`, border: `1px solid ${color}20`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: `0 0 14px ${color}20`,
             }}>
               <Icon size={14} style={{ color }} strokeWidth={2}/>
             </div>
           </div>
 
           {/* Value */}
-          <div style={{ position: 'relative', zIndex: 1, marginBottom: 10 }}>
+          <div style={{ marginBottom: 10 }}>
             {loading ? <Sk h={32} mb={0}/> : (
               <p style={{
                 fontSize: 24, fontWeight: 700, fontFamily: T.display,
-                color, textShadow: `0 0 28px ${color}55`,
+                color: T.text,
                 letterSpacing: '-0.02em', lineHeight: 1,
               }}>
                 <AnimNum value={value} format={v => toBRL(v)}/>
@@ -239,13 +200,12 @@ function KpiCard({ label, value, delta, pos: isPos, color, icon: Icon, loading, 
           </div>
 
           {/* Delta */}
-          <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
               fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 600,
-              background: isPos ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+              background: isPos ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
               color: isPos ? T.green : T.red,
-              border: `1px solid ${isPos ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
             }}>
               {isPos ? '↑' : '↓'} {delta}
             </span>
@@ -257,35 +217,34 @@ function KpiCard({ label, value, delta, pos: isPos, color, icon: Icon, loading, 
   )
 }
 
-// ─── ROAS Card (sem toBRL) ────────────────────────────────────
+// ─── ROAS Card (flat) ─────────────────────────────────────────
 function RoasCard({ value, delta, loading, index }: {
   value: number; delta: string; loading?: boolean; index?: number
 }) {
   const color = T.purple
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      transition={{ duration: 0.5, delay: (index ?? 3) * 0.07, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: (index ?? 3) * 0.05, ease: [0.16, 1, 0.3, 1] }}
     >
-      <SCard glowColor={`${color}16`} style={{ height: '100%' }}>
-        <div style={{ padding: 20, position: 'relative', overflow: 'hidden' }}>
-          <GlowCorner color={`${color}22`}/>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, position: 'relative', zIndex: 1 }}>
+      <SCard style={{ height: '100%' }}>
+        <div style={{ padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: T.display }}>ROAS</span>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: `${color}14`, border: `1px solid ${color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 14px ${color}20` }}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: `${color}12`, border: `1px solid ${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Zap size={14} style={{ color }} strokeWidth={2}/>
             </div>
           </div>
-          <div style={{ position: 'relative', zIndex: 1, marginBottom: 10 }}>
+          <div style={{ marginBottom: 10 }}>
             {loading ? <Sk h={32} mb={0}/> : (
-              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Syne', sans-serif", color, textShadow: `0 0 32px ${color}66`, letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Syne', sans-serif", color: T.text, letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
                 <AnimNum value={value} format={v => `${v.toFixed(2)}x`}/>
               </p>
             )}
           </div>
-          <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 600, background: 'rgba(124,110,247,0.12)', color, border: `1px solid rgba(124,110,247,0.25)` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 600, background: 'rgba(124,110,247,0.1)', color }}>
               {delta}
             </span>
             <span style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>vs anterior</span>
@@ -326,45 +285,57 @@ function CardHead({ icon: Icon, title, badge, badgeColor = T.blue, color = T.mut
 function PageBg() {
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: -180, left: -60, width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(16,185,129,0.055) 0%, transparent 70%)', animation: 'orbA 12s ease-in-out infinite', filter: 'blur(1px)' }}/>
-      <div style={{ position: 'absolute', bottom: -200, right: -100, width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,0.05) 0%, transparent 70%)', animation: 'orbB 18s ease-in-out infinite reverse', filter: 'blur(1px)' }}/>
-      <div style={{ position: 'absolute', top: '30%', right: '5%', width: 340, height: 340, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,110,247,0.035) 0%, transparent 70%)', animation: 'orbA 28s ease-in-out infinite' }}/>
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.07) 1px, transparent 1px)', backgroundSize: '28px 28px', maskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%)' }}/>
-      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 130% 100% at 50% -10%, transparent 35%, rgba(11,15,20,0.65) 100%)' }}/>
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.05) 1px, transparent 1px)', backgroundSize: '28px 28px', maskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%)' }}/>
     </div>
   )
 }
 
-// ─── Sortable Widget Wrapper ───────────────────────────────────
+// ─── Sortable Widget Wrapper (modo edição estilo UTMify) ──────
 function SW({ id, editMode, visible, onToggle, children, span = 1 }: {
   id: string; editMode: boolean; visible: boolean; onToggle: () => void
   children: React.ReactNode; span?: number
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+
+  if (!editMode && !visible) return null
+
   return (
     <div
       ref={setNodeRef}
       suppressHydrationWarning
       style={{
         transform: transform ? `translate3d(${transform.x}px,${transform.y}px,0)` : undefined,
-        transition, gridColumn: `span ${span}`, opacity: isDragging ? 0.5 : 1,
+        transition, gridColumn: `span ${span}`, opacity: isDragging ? 0.4 : 1,
         position: 'relative', minWidth: 0,
       }}
     >
-      {editMode && (
+      {editMode ? (
         <div style={{
-          position: 'absolute', top: 6, right: 6, zIndex: 20,
-          display: 'flex', gap: 4,
+          position: 'relative',
+          borderRadius: 14,
+          outline: `1.5px dashed ${visible ? 'rgba(124,110,247,0.4)' : 'rgba(148,163,184,0.2)'}`,
+          outlineOffset: 2,
+          opacity: visible ? 1 : 0.45,
+          overflow: 'hidden',
         }}>
-          <button {...attributes} {...listeners} style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#94a3b8', cursor: 'grab', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <GripVertical size={11}/>
-          </button>
-          <button onClick={onToggle} style={{ width: 24, height: 24, borderRadius: 6, background: visible ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${visible ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`, color: visible ? T.green : T.red, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {visible ? <Eye size={10}/> : <EyeOff size={10}/>}
-          </button>
+          {/* Barra de controle no topo do card */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+            height: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '0 8px',
+            background: 'rgba(11,15,20,0.85)', backdropFilter: 'blur(4px)',
+            borderBottom: `1px solid ${T.border}`,
+          }}>
+            <button {...attributes} {...listeners} style={{ display: 'flex', alignItems: 'center', gap: 4, height: 22, padding: '0 6px', borderRadius: 6, background: 'transparent', border: 'none', color: T.muted, cursor: 'grab', fontSize: 10, fontFamily: T.sans }}>
+              <GripVertical size={12}/> mover
+            </button>
+            <button onClick={onToggle} style={{ width: 24, height: 22, borderRadius: 6, background: 'transparent', border: 'none', color: visible ? T.muted : T.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title={visible ? 'Ocultar' : 'Mostrar'}>
+              {visible ? <X size={13}/> : <Eye size={13}/>}
+            </button>
+          </div>
+          <div style={{ paddingTop: 30, pointerEvents: 'none' }}>{children}</div>
         </div>
-      )}
-      {visible || editMode ? children : null}
+      ) : children}
     </div>
   )
 }
@@ -447,6 +418,201 @@ const ScoreBadge = ({ score }: { score: string }) => {
   return <span style={{ width: 22, height: 22, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, fontFamily: T.mono, background: s.bg, color: s.color, flexShrink: 0 }}>{score}</span>
 }
 
+function SetupActionCard({ icon: Icon, title, text, action, href, color, tone = 'idle' }: {
+  icon: React.ElementType
+  title: string
+  text: string
+  action: string
+  href: string
+  color: string
+  tone?: 'idle' | 'hot'
+}) {
+  return (
+    <button
+      onClick={() => { window.location.href = href }}
+      style={{
+        minHeight: 116,
+        padding: 16,
+        borderRadius: 12,
+        background: tone === 'hot' ? `${color}10` : 'rgba(255,255,255,0.025)',
+        border: `1px solid ${tone === 'hot' ? `${color}35` : T.border}`,
+        color: T.text,
+        cursor: 'pointer',
+        textAlign: 'left',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        gap: 14,
+        transition: 'border-color 160ms, background 160ms, transform 160ms',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = `${color}55`
+        e.currentTarget.style.background = `${color}12`
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = tone === 'hot' ? `${color}35` : T.border
+        e.currentTarget.style.background = tone === 'hot' ? `${color}10` : 'rgba(255,255,255,0.025)'
+      }}
+    >
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+          background: `${color}12`, border: `1px solid ${color}25`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon size={15} color={color}/>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: T.display, marginBottom: 5 }}>{title}</p>
+          <p style={{ fontSize: 12, lineHeight: 1.45, color: T.sub, fontFamily: T.sans }}>{text}</p>
+        </div>
+      </div>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color, fontWeight: 700, fontFamily: T.sans }}>
+        {action} <ArrowRight size={12}/>
+      </span>
+    </button>
+  )
+}
+
+function SetupPanel({ alertas, hasAdAccount, hasMeta, hasGoal, hasActivity, isMobile }: {
+  alertas: { msg: string }[]
+  hasAdAccount: boolean
+  hasMeta: boolean
+  hasGoal: boolean
+  hasActivity: boolean
+  isMobile: boolean
+}) {
+  const readyCount = [hasAdAccount, hasMeta, hasGoal, hasActivity].filter(Boolean).length
+  const nextActions = [
+    {
+      icon: Plug,
+      title: hasAdAccount ? 'TikTok Ads conectado' : 'Conectar TikTok Ads',
+      text: hasAdAccount ? 'A conta ja esta entrando no painel de performance.' : 'Puxe gasto, campanha e ROAS para sair do zero operacional.',
+      action: hasAdAccount ? 'Ver integracoes' : 'Conectar agora',
+      href: '/integracoes',
+      color: T.cyan,
+      tone: hasAdAccount ? 'idle' as const : 'hot' as const,
+    },
+    {
+      icon: Bell,
+      title: hasMeta ? 'Meta Ads conectado' : 'Conectar Meta Ads',
+      text: hasMeta ? 'Saldos e contas Meta ja podem entrar nos alertas.' : 'Use a Meta para acompanhar saldo, tokens e contas ativas.',
+      action: hasMeta ? 'Ver contas' : 'Adicionar conta',
+      href: '/integracoes',
+      color: T.blue,
+      tone: hasMeta ? 'idle' as const : 'hot' as const,
+    },
+    {
+      icon: Target,
+      title: hasGoal ? 'Meta mensal definida' : 'Definir meta do mes',
+      text: hasGoal ? 'O painel consegue projetar ritmo e risco da meta.' : 'Crie uma referencia para o TioTrack avisar se o mes saiu do ritmo.',
+      action: hasGoal ? 'Ajustar meta' : 'Definir meta',
+      href: '/configuracoes',
+      color: T.purple,
+      tone: hasGoal ? 'idle' as const : 'hot' as const,
+    },
+  ]
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+      style={{ gridColumn: isMobile ? 'span 1' : 'span 4' }}
+    >
+      <SCard>
+        <div style={{
+          padding: isMobile ? 16 : 18,
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'minmax(260px, 0.9fr) minmax(0, 1.6fr)',
+          gap: isMobile ? 16 : 18,
+          alignItems: 'stretch',
+        }}>
+          <div style={{
+            padding: 16,
+            borderRadius: 12,
+            background: 'linear-gradient(145deg, rgba(59,130,246,0.12), rgba(16,185,129,0.06) 55%, rgba(15,22,35,0.2))',
+            border: `1px solid ${T.borderMid}`,
+            minHeight: 164,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}>
+            <div>
+              <p style={{ fontSize: 10, color: T.cyan, fontFamily: T.mono, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+                Partida do painel
+              </p>
+              <h2 style={{ fontSize: isMobile ? 19 : 22, color: T.text, lineHeight: 1.12, fontFamily: T.display, letterSpacing: '-0.01em', marginBottom: 9 }}>
+                Deixe o TioTrack pronto para operar sozinho.
+              </h2>
+              <p style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.55, fontFamily: T.sans }}>
+                Falta pouco: conecte as fontes, defina a meta e os cards deixam de ser apenas numeros para virar alerta de decisao.
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18 }}>
+              <div style={{ flex: 1 }}>
+                <Bar pct={(readyCount / 4) * 100} color={readyCount >= 3 ? T.green : T.blue}/>
+              </div>
+              <span style={{ fontSize: 11, color: T.sub, fontFamily: T.mono }}>{readyCount}/4</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+            {nextActions.map(item => <SetupActionCard key={item.title} {...item}/>)}
+          </div>
+
+          <div style={{
+            gridColumn: isMobile ? 'span 1' : 'span 2',
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+            gap: 10,
+          }}>
+            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T.border}` }}>
+              <p style={{ fontSize: 10, color: T.muted, fontFamily: T.display, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Alertas</p>
+              <p style={{ fontSize: 19, color: alertas.length ? T.amber : T.green, fontFamily: T.display, fontWeight: 800, marginBottom: 4 }}>{alertas.length}</p>
+              <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans }}>
+                {alertas[0]?.msg ?? 'Nenhum ponto critico agora.'}
+              </p>
+            </div>
+            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T.border}` }}>
+              <p style={{ fontSize: 10, color: T.muted, fontFamily: T.display, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Atividade</p>
+              <p style={{ fontSize: 19, color: hasActivity ? T.green : T.muted, fontFamily: T.display, fontWeight: 800, marginBottom: 4 }}>{hasActivity ? 'ON' : 'OFF'}</p>
+              <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans }}>
+                {hasActivity ? 'Vendas recentes ja aparecem no feed.' : 'As primeiras vendas aparecem aqui em tempo real.'}
+              </p>
+            </div>
+            <button
+              onClick={() => { window.location.href = '/campanhas' }}
+              style={{
+                padding: 14,
+                borderRadius: 10,
+                background: 'rgba(255,255,255,0.025)',
+                border: `1px solid ${T.border}`,
+                cursor: 'pointer',
+                textAlign: 'left',
+                color: T.text,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: 10,
+              }}
+            >
+              <div>
+                <p style={{ fontSize: 10, color: T.muted, fontFamily: T.display, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Campanhas</p>
+                <p style={{ fontSize: 19, color: T.blue, fontFamily: T.display, fontWeight: 800, marginBottom: 4 }}>ROAS</p>
+                <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans }}>Quando sincronizar, o ranking mostra onde escalar ou cortar gasto.</p>
+              </div>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: T.blue, fontWeight: 700, fontFamily: T.sans }}>
+                Ver campanhas <ArrowRight size={12}/>
+              </span>
+            </button>
+          </div>
+        </div>
+      </SCard>
+    </motion.div>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════
@@ -491,15 +657,21 @@ export default function OverviewPage() {
 
   useEffect(() => {
     if (!workspace?.id) return
-    const s = localStorage.getItem(`tiotrack_layout_v2_${workspace.id}`)
-    if (s) { try { setWidgets(JSON.parse(s)) } catch {} }
+    const s = localStorage.getItem(`tiotrack_layout_${LAYOUT_VERSION}_${workspace.id}`)
+    if (s) {
+      try {
+        const saved: Widget[] = JSON.parse(s)
+        const merged = DEFAULT_WIDGETS.map(d => saved.find(w => w.id === d.id) ?? d)
+        setWidgets(merged)
+      } catch {}
+    }
     const c = localStorage.getItem(`tiotrack_compact_${workspace.id}`)
     if (c) setCompact(c === 'true')
   }, [workspace?.id])
 
   const save = (nw: Widget[]) => {
     setWidgets(nw)
-    if (workspace?.id) localStorage.setItem(`tiotrack_layout_v2_${workspace.id}`, JSON.stringify(nw))
+    if (workspace?.id) localStorage.setItem(`tiotrack_layout_${LAYOUT_VERSION}_${workspace.id}`, JSON.stringify(nw))
   }
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e
@@ -629,6 +801,14 @@ export default function OverviewPage() {
   const totalTk    = bcs.reduce((s: number, b: any) => s + (b.balance ?? 0), 0)
   const totalMeta  = metaAccs.reduce((s: number, a: any) => s + (a.balance ?? 0), 0)
   const maxRoas    = criativos[0]?.roas || 1
+  const chartHasData = chartData.some(d => (d.Receita ?? 0) > 0 || (d.Gasto ?? 0) > 0)
+  const hasAdAccount = bcs.length > 0
+  const hasMeta = metaAccs.length > 0 || metaConns.length > 0
+  const hasGoal = (meta?.metaMensal ?? 0) > 0
+  const hasActivity = feed.length > 0
+  const shouldShowSetupPanel = !editMode && !lKpi && !lChart && (
+    !chartHasData || !hasAdAccount || !hasMeta || !hasGoal || alertas.length > 0
+  )
 
   const getW = (id: WidgetId) => widgets.find(w => w.id === id)!
 
@@ -638,24 +818,28 @@ export default function OverviewPage() {
 
       {/* ── Topbar ── */}
       <div style={{
-        height: 50, borderBottom: `1px solid ${T.border}`, flexShrink: 0,
-        display: 'flex', alignItems: 'center', padding: '0 20px', gap: 8,
+        minHeight: 50, borderBottom: `1px solid ${T.border}`, flexShrink: 0,
+        display: 'flex', alignItems: 'center', padding: isMobile ? '10px 12px' : '0 20px', gap: 8,
+        flexWrap: isMobile ? 'wrap' : 'nowrap',
         background: 'rgba(11,15,20,0.95)', backdropFilter: 'blur(20px)',
         position: 'relative', zIndex: 10,
       }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', letterSpacing: '-0.02em', fontFamily: T.display }}>
-          Overview
-        </span>
-        {alertas.length > 0 && (
-          <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 20, background: 'rgba(239,68,68,0.12)', color: T.red, fontFamily: T.mono, fontWeight: 700, border: '1px solid rgba(239,68,68,0.2)' }}>
-            {alertas.length} alerta{alertas.length > 1 ? 's' : ''}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: isMobile ? '1 0 100%' : '0 1 auto' }}>
+          <span style={{ fontSize: isMobile ? 17 : 15, fontWeight: 700, color: '#e2e8f0', letterSpacing: '-0.02em', fontFamily: T.display }}>
+            Visão geral
           </span>
-        )}
-        <div style={{ flex: 1 }}/>
-        <Ring n={nextRefresh}/>
+          {alertas.length > 0 && (
+            <span role="status" style={{ fontSize: 9, padding: '2px 8px', borderRadius: 20, background: 'rgba(239,68,68,0.12)', color: T.red, fontFamily: T.mono, fontWeight: 700, border: '1px solid rgba(239,68,68,0.2)' }}>
+              {alertas.length} alerta{alertas.length > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        {!isMobile && <div style={{ flex: 1 }}/>} 
+        <div aria-label="Filtros do período" style={{ display: 'flex', alignItems: 'center', gap: 6, flex: isMobile ? 1 : '0 0 auto' }}>
+          <Ring n={nextRefresh}/>
         {!isMobile && (
-          <button onClick={() => setCompact(c => !c)} style={{ width: 30, height: 30, borderRadius: 8, background: compact ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${compact ? 'rgba(59,130,246,0.25)' : T.border}`, color: compact ? '#60a5fa' : T.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 160ms' }}>
-            {compact ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+          <button aria-label={compact ? 'Usar visualização confortável' : 'Usar visualização compacta'} title={compact ? 'Visualização confortável' : 'Visualização compacta'} onClick={() => setCompact(c => !c)} style={{ width: 30, height: 30, borderRadius: 8, background: compact ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${compact ? 'rgba(59,130,246,0.25)' : T.border}`, color: compact ? '#60a5fa' : T.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 160ms' }}>
+            {compact ? <Maximize2 size={12}/> : <Minimize2 size={12}/>} 
           </button>
         )}
         {!isMobile && (
@@ -664,20 +848,27 @@ export default function OverviewPage() {
           </button>
         )}
         {(['hoje', '7d', '30d'] as Period[]).map(p => (
-          <button key={p} onClick={() => setPeriod(p)} style={{ height: 30, padding: '0 14px', borderRadius: 8, background: period === p ? 'rgba(59,130,246,0.1)' : 'transparent', border: `1px solid ${period === p ? 'rgba(59,130,246,0.25)' : T.border}`, color: period === p ? '#60a5fa' : T.sub, fontSize: 11, cursor: 'pointer', fontFamily: T.sans, fontWeight: period === p ? 600 : 400, transition: 'all 160ms' }}>
-            {p === 'hoje' ? 'Hoje' : p}
+          <button key={p} aria-pressed={period === p} onClick={() => setPeriod(p)} style={{ height: isMobile ? 36 : 30, padding: isMobile ? '0 12px' : '0 14px', borderRadius: 8, background: period === p ? 'rgba(59,130,246,0.1)' : 'transparent', border: `1px solid ${period === p ? 'rgba(59,130,246,0.25)' : T.border}`, color: period === p ? '#60a5fa' : T.sub, fontSize: 11, cursor: 'pointer', fontFamily: T.sans, fontWeight: period === p ? 600 : 400, transition: 'all 160ms' }}>
+            {p === 'hoje' ? 'Hoje' : p === '7d' ? '7 dias' : '30 dias'}
           </button>
         ))}
-        <button onClick={() => { if (workspace?.id) { setNextRefresh(300); loadAll(workspace.id, period, true) } }} style={{ width: 30, height: 30, borderRadius: 8, background: 'transparent', border: `1px solid ${T.border}`, color: T.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+        <button aria-label="Atualizar dados" title="Atualizar dados" onClick={() => { if (workspace?.id) { setNextRefresh(300); loadAll(workspace.id, period, true) } }} style={{ width: isMobile ? 36 : 30, height: isMobile ? 36 : 30, borderRadius: 8, background: 'transparent', border: `1px solid ${T.border}`, color: T.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
           <RefreshCw size={12} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }}/>
         </button>
+        </div>
       </div>
 
       {/* ── Content ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: compact ? '12px 16px' : '16px 20px', position: 'relative', zIndex: 1 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px 88px' : compact ? '12px 16px' : '16px 20px', position: 'relative', zIndex: 1 }}>
         {editMode && (
-          <div style={{ marginBottom: 12, padding: '10px 16px', borderRadius: 10, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', fontSize: 12, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <GripVertical size={14}/> Arraste pra reorganizar · 👁 mostrar/ocultar
+          <div style={{ marginBottom: 14, padding: '12px 16px', borderRadius: 12, background: 'rgba(124,110,247,0.06)', border: '1px solid rgba(124,110,247,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: T.purple, fontFamily: T.sans }}>
+              <Settings2 size={15}/>
+              <span>Editando dashboard · arraste pra reorganizar, <X size={11} style={{ display: 'inline', verticalAlign: -1 }}/> pra ocultar</span>
+            </div>
+            <span style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>
+              {widgets.filter(w => w.visible).length} de {widgets.length} visíveis
+            </span>
           </div>
         )}
 
@@ -685,7 +876,7 @@ export default function OverviewPage() {
           <SortableContext items={widgets.map(w => w.id)} strategy={rectSortingStrategy}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: isMobile ? 'repeat(2, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr))',
+              gridTemplateColumns: isMobile ? 'minmax(0,1fr)' : 'repeat(4, minmax(0,1fr))',
               gap: compact ? 10 : 12,
               alignItems: 'start',
             }}>
@@ -705,11 +896,30 @@ export default function OverviewPage() {
               </SW>
 
               {/* Gráfico */}
-              <SW id="grafico_receita" editMode={editMode} visible={getW('grafico_receita').visible} onToggle={() => toggle('grafico_receita')} span={isMobile ? 2 : 4}>
+              <SW id="grafico_receita" editMode={editMode} visible={getW('grafico_receita').visible} onToggle={() => toggle('grafico_receita')} span={isMobile ? 1 : 4}>
                 <SCard>
                   <CardHead icon={BarChart2} title="Receita vs Gasto — 14 dias" badge="14d" badgeColor={T.muted} color={T.blue}/>
                   <div style={{ padding: '12px 20px 20px' }}>
-                    {lChart ? <Sk h={compact ? 90 : 150}/> : (
+                    {lChart ? <Sk h={compact ? 90 : 150}/> : !chartHasData ? (
+                      <div style={{
+                        height: compact ? 90 : 150,
+                        borderRadius: 12,
+                        border: `1px dashed ${T.borderMid}`,
+                        background: 'linear-gradient(180deg, rgba(59,130,246,0.06), rgba(15,22,35,0.02))',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        padding: 18,
+                      }}>
+                        <div>
+                          <p style={{ fontSize: 13, color: T.text, fontWeight: 700, fontFamily: T.display, marginBottom: 6 }}>Sem movimento neste periodo</p>
+                          <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans, maxWidth: 420 }}>
+                            Conecte as contas de anuncios e confirme o rastreio de vendas para o grafico ganhar leitura de receita, gasto e ROAS.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
                       <ResponsiveContainer width="100%" height={compact ? 90 : 150}>
                         <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                           <defs>
@@ -729,14 +939,25 @@ export default function OverviewPage() {
                 </SCard>
               </SW>
 
+              {shouldShowSetupPanel && (
+                <SetupPanel
+                  alertas={alertas}
+                  hasAdAccount={hasAdAccount}
+                  hasMeta={hasMeta}
+                  hasGoal={hasGoal}
+                  hasActivity={hasActivity}
+                  isMobile={isMobile}
+                />
+              )}
+
               {/* Activity Feed */}
-              <SW id="activity_feed" editMode={editMode} visible={getW('activity_feed').visible} onToggle={() => toggle('activity_feed')} span={isMobile ? 2 : 4}>
+              <SW id="activity_feed" editMode={editMode} visible={getW('activity_feed').visible} onToggle={() => toggle('activity_feed')} span={isMobile ? 1 : 4}>
                 <SCard glowColor="rgba(16,185,129,0.08)">
                   <CardHead icon={Activity} title="Atividade em tempo real" badge="ao vivo" badgeColor={T.green} color={T.green}/>
                   <div style={{ padding: '0 20px 8px' }}>
                     {lFeed ? <>{[1,2,3,4].map(i => <Sk key={i} h={52} r={8} mb={4}/>)}</> :
                      feed.length === 0 ? (
-                      <p style={{ fontSize: 13, color: T.muted, textAlign: 'center', padding: '24px 0', fontFamily: T.sans }}>Nenhuma atividade ainda.</p>
+                      <p style={{ fontSize: 13, color: T.sub, textAlign: 'center', padding: '24px 0', fontFamily: T.sans }}>As novas vendas e atualizações aparecerão aqui em tempo real.</p>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: '0 32px' }}>
                         {feed.map((item: any, i: number) => (
@@ -757,12 +978,12 @@ export default function OverviewPage() {
               </SW>
 
               {/* Melhor campanha */}
-              <SW id="melhor_campanha" editMode={editMode} visible={getW('melhor_campanha').visible} onToggle={() => toggle('melhor_campanha')} span={isMobile ? 2 : 2}>
+              <SW id="melhor_campanha" editMode={editMode} visible={getW('melhor_campanha').visible} onToggle={() => toggle('melhor_campanha')} span={isMobile ? 1 : 2}>
                 <SCard glowColor="rgba(245,158,11,0.08)">
                   <CardHead icon={Trophy} title="Melhor campanha" badge="7d" badgeColor={T.green} color={T.amber}/>
                   <div style={{ padding: '16px 20px' }}>
                     {lCamp ? <Sk h={80}/> : !melhor ? (
-                      <p style={{ fontSize: 13, color: T.muted, fontFamily: T.sans }}>Sem dados de campanhas.</p>
+                      <p style={{ fontSize: 13, color: T.sub, fontFamily: T.sans, lineHeight: 1.5 }}>Conecte uma conta de anúncios para identificar sua campanha com melhor retorno.</p>
                     ) : (
                       <>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -785,12 +1006,12 @@ export default function OverviewPage() {
               </SW>
 
               {/* Top 3 campanhas */}
-              <SW id="top3_campanhas" editMode={editMode} visible={getW('top3_campanhas').visible} onToggle={() => toggle('top3_campanhas')} span={isMobile ? 2 : 2}>
+              <SW id="top3_campanhas" editMode={editMode} visible={getW('top3_campanhas').visible} onToggle={() => toggle('top3_campanhas')} span={isMobile ? 1 : 2}>
                 <SCard>
                   <CardHead icon={BarChart2} title="Top campanhas" badge="ROAS" badgeColor={T.blue} color={T.blue}/>
                   <div style={{ padding: '8px 20px 16px' }}>
                     {lCamp ? <>{[1,2,3].map(i => <Sk key={i} h={36} mb={6}/>)}</> :
-                     criativos.length === 0 ? <p style={{ fontSize: 13, color: T.muted, padding: '12px 0', fontFamily: T.sans }}>Sem dados.</p> :
+                     criativos.length === 0 ? <p style={{ fontSize: 13, color: T.sub, padding: '12px 0', fontFamily: T.sans, lineHeight: 1.5 }}>Os rankings aparecerão após a sincronização das campanhas.</p> :
                      criativos.slice(0, 5).map((c: any, i: number) => (
                       <div key={c.nome} style={{ padding: '8px 0', borderBottom: i < 4 ? `1px solid ${T.border}` : 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
@@ -809,7 +1030,7 @@ export default function OverviewPage() {
               </SW>
 
               {/* Meta do mês */}
-              <SW id="meta_mes" editMode={editMode} visible={getW('meta_mes').visible} onToggle={() => toggle('meta_mes')} span={isMobile ? 2 : 2}>
+              <SW id="meta_mes" editMode={editMode} visible={getW('meta_mes').visible} onToggle={() => toggle('meta_mes')} span={isMobile ? 1 : 2}>
                 <SCard glowColor="rgba(124,110,247,0.08)">
                   <CardHead icon={Percent} title="Meta do mês" color={T.purple}/>
                   <div style={{ padding: '16px 20px' }}>
@@ -865,7 +1086,7 @@ export default function OverviewPage() {
               </SW>
 
               {/* Saldo TikTok */}
-              <SW id="saldo_bcs" editMode={editMode} visible={getW('saldo_bcs').visible} onToggle={() => toggle('saldo_bcs')} span={isMobile ? 2 : 2}>
+              <SW id="saldo_bcs" editMode={editMode} visible={getW('saldo_bcs').visible} onToggle={() => toggle('saldo_bcs')} span={isMobile ? 1 : 2}>
                 <SCard>
                   <CardHead icon={Key} title="Saldo TikTok BCs" color={T.cyan}/>
                   <div style={{ padding: '8px 20px 16px' }}>
@@ -890,7 +1111,7 @@ export default function OverviewPage() {
               </SW>
 
               {/* Saldo Meta */}
-              <SW id="saldo_meta" editMode={editMode} visible={getW('saldo_meta').visible} onToggle={() => toggle('saldo_meta')} span={isMobile ? 2 : 2}>
+              <SW id="saldo_meta" editMode={editMode} visible={getW('saldo_meta').visible} onToggle={() => toggle('saldo_meta')} span={isMobile ? 1 : 2}>
                 <SCard>
                   <CardHead icon={Bell} title="Saldo Meta Ads" color={T.blue}/>
                   <div style={{ padding: '8px 20px 16px' }}>
@@ -912,7 +1133,7 @@ export default function OverviewPage() {
               </SW>
 
               {/* Alertas */}
-              <SW id="alertas" editMode={editMode} visible={getW('alertas').visible} onToggle={() => toggle('alertas')} span={isMobile ? 2 : 2}>
+              <SW id="alertas" editMode={editMode} visible={getW('alertas').visible} onToggle={() => toggle('alertas')} span={isMobile ? 1 : 2}>
                 <SCard>
                   <CardHead icon={AlertTriangle} title="Alertas" badgeColor={alertas.length > 0 ? T.red : T.green} badge={alertas.length > 0 ? `${alertas.length}` : '✓'} color={T.amber}/>
                   <div style={{ padding: '8px 20px 16px' }}>
@@ -932,7 +1153,7 @@ export default function OverviewPage() {
               </SW>
 
               {/* Token expiry */}
-              <SW id="token_expiry" editMode={editMode} visible={getW('token_expiry').visible} onToggle={() => toggle('token_expiry')} span={isMobile ? 2 : 2}>
+              <SW id="token_expiry" editMode={editMode} visible={getW('token_expiry').visible} onToggle={() => toggle('token_expiry')} span={isMobile ? 1 : 2}>
                 <SCard>
                   <CardHead icon={Key} title="Status dos tokens" color={T.muted}/>
                   <div style={{ padding: '8px 20px 16px' }}>
@@ -953,7 +1174,7 @@ export default function OverviewPage() {
               </SW>
 
               {/* Score criativos */}
-              <SW id="score_criativos" editMode={editMode} visible={getW('score_criativos').visible} onToggle={() => toggle('score_criativos')} span={isMobile ? 2 : 2}>
+              <SW id="score_criativos" editMode={editMode} visible={getW('score_criativos').visible} onToggle={() => toggle('score_criativos')} span={isMobile ? 1 : 2}>
                 <SCard>
                   <CardHead icon={BarChart2} title="Score campanhas" badge="7d" badgeColor={T.muted} color={T.muted}/>
                   <div style={{ padding: '8px 20px 16px' }}>
@@ -978,7 +1199,7 @@ export default function OverviewPage() {
               </SW>
 
               {/* Diário rápido */}
-              <SW id="diario_rapido" editMode={editMode} visible={getW('diario_rapido').visible} onToggle={() => toggle('diario_rapido')} span={isMobile ? 2 : 2}>
+              <SW id="diario_rapido" editMode={editMode} visible={getW('diario_rapido').visible} onToggle={() => toggle('diario_rapido')} span={isMobile ? 1 : 2}>
                 <SCard>
                   <CardHead icon={BookOpen} title="Diário rápido" color={T.muted}/>
                   <div style={{ padding: '12px 20px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>

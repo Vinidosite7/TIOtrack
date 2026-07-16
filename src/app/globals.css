@@ -11,6 +11,19 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+:root {
+  color-scheme: dark;
+  --tt-bg: #0b0f14;
+  --tt-surface: #0f1623;
+  --tt-surface-raised: #131c2a;
+  --tt-border: rgba(148, 163, 184, 0.10);
+  --tt-text: #e2e8f0;
+  --tt-text-subtle: #94a3b8;
+  --tt-text-muted: #64748b;
+  --tt-accent: #3b82f6;
+  --tt-focus: #93c5fd;
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Syne', sans-serif;
   margin: 0;
@@ -26,6 +39,16 @@ input, button, select, textarea { font-family: 'DM Sans', sans-serif; font-size:
 button { cursor: pointer; border: none; background: none; }
 a { text-decoration: none; color: inherit; }
 
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--tt-focus);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgba(59, 130, 246, 0.32);
+  color: #fff;
+}
+
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
@@ -38,4 +61,13 @@ a { text-decoration: none; color: inherit; }
   .desktop-sidebar   { display: none !important; }
   .mobile-bottom-nav { display: flex !important; }
   .main-content      { padding-bottom: 64px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

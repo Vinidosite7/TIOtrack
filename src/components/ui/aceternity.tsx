@@ -241,92 +241,17 @@ export function SpotlightCard({
   style = {},
   spotlightColor = 'rgba(124,110,247,0.13)',
 }: SpotlightCardProps) {
-  const ref     = useRef<HTMLDivElement>(null)
-  const [pos, setPos]       = useState({ x: -9999, y: -9999 })
-  const [hovered, setHovered] = useState(false)
-
-  const onMove = useCallback((e: MouseEvent) => {
-    const r = ref.current?.getBoundingClientRect()
-    if (!r) return
-    setPos({ x: e.clientX - r.left, y: e.clientY - r.top })
-  }, [])
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const enter = () => setHovered(true)
-    const leave = () => { setHovered(false); setPos({ x: -9999, y: -9999 }) }
-    el.addEventListener('mousemove', onMove)
-    el.addEventListener('mouseenter', enter)
-    el.addEventListener('mouseleave', leave)
-    return () => {
-      el.removeEventListener('mousemove', onMove)
-      el.removeEventListener('mouseenter', enter)
-      el.removeEventListener('mouseleave', leave)
-    }
-  }, [onMove])
-
-  // cor de borda realçada no hover
-  const borderHover = hovered
-    ? `1px solid rgba(124,110,247,0.22)`
-    : (style.border as string | undefined) || '1px solid rgba(255,255,255,0.06)'
-
   return (
     <div
-      ref={ref}
       className={className}
       style={{
         position: 'relative',
         overflow: 'hidden',
         ...style,
-        border: borderHover,
-        boxShadow: hovered
-          ? `${(style.boxShadow as string) || ''}, 0 0 0 1px rgba(124,110,247,0.08)`
-          : style.boxShadow as string | undefined,
-        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+        border: (style.border as string | undefined) || '1px solid rgba(148,163,184,0.08)',
       }}
     >
-      {/* ① Spotlight radial */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2,
-        background: `radial-gradient(280px circle at ${pos.x}px ${pos.y}px, ${spotlightColor}, transparent 68%)`,
-        transition: hovered ? 'none' : 'background 0.4s ease',
-        borderRadius: 'inherit',
-      }} />
-
-      {/* ② Grain noise — textura matte premium */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3,
-        borderRadius: 'inherit',
-        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.045'/%3E%3C/svg%3E")`,
-        backgroundSize: '140px 140px',
-        mixBlendMode: 'overlay',
-        opacity: 0.75,
-      }} />
-
-      {/* ③ Top shimmer line — aparece no hover */}
-      <div style={{
-        position: 'absolute', top: 0, left: '8%', right: '8%',
-        height: '1px', zIndex: 4, pointerEvents: 'none',
-        background: hovered
-          ? `linear-gradient(90deg, transparent, ${spotlightColor.replace(/[\d.]+\)$/, '0.55)')}, transparent)`
-          : 'transparent',
-        transition: 'background 0.3s ease',
-        borderRadius: 'inherit',
-      }} />
-
-      {/* ④ Bottom glow accent ao hover */}
-      <div style={{
-        position: 'absolute', bottom: 0, left: '20%', right: '20%',
-        height: '1px', zIndex: 4, pointerEvents: 'none',
-        background: hovered
-          ? `linear-gradient(90deg, transparent, rgba(124,110,247,0.18), transparent)`
-          : 'transparent',
-        transition: 'background 0.3s ease',
-      }} />
-
-      {/* Conteúdo */}
-      <div style={{ position: 'relative', zIndex: 5 }}>{children}</div>
+      <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
     </div>
   )
 }
@@ -493,21 +418,7 @@ export function GlowCorner({
   color: string
   position?: 'bottom-right' | 'bottom-left' | 'top-right'
 }) {
-  const pos: Record<string, React.CSSProperties> = {
-    'bottom-right': { bottom: -24, right: -24 },
-    'bottom-left':  { bottom: -24, left:  -24 },
-    'top-right':    { top:    -24, right: -24  },
-  }
-  return (
-    <div style={{
-      position: 'absolute',
-      width: 130, height: 130, borderRadius: '50%',
-      background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
-      filter: 'blur(18px)',
-      pointerEvents: 'none', zIndex: 0,
-      ...pos[position],
-    }} />
-  )
+  return null
 }
 
 // ═══════════════════════════════════════════════════════════════

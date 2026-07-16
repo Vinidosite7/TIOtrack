@@ -14,8 +14,13 @@ export const metadata: Metadata = {
     title: 'TioTrack',
   },
   icons: {
-    icon: '/icon-192.png',
-    apple: '/icon-192.png',
+    icon: [
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icon-180.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
 }
 
@@ -35,7 +40,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes"/>
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
         <meta name="apple-mobile-web-app-title" content="TioTrack"/>
-        <link rel="apple-touch-icon" href="/icon-192.png"/>
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"/>
+        <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png"/>
+        <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png"/>
         <link rel="manifest" href="/manifest.json"/>
       </head>
       <body style={{ margin: 0, padding: 0, height: '100%', background: '#05080F', fontFamily: 'var(--font-inter), Inter, system-ui, sans-serif' }}>

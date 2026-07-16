@@ -131,7 +131,7 @@ function normalizePayload(body: any) {
     const cus = d.customer ?? {}
     const trk = d.tracking ?? {}
     const id  = tx.id ?? tx.external_id
-    const valor = parseFloat(tx.amount ?? tx.value ?? '0')
+    const valor = parseMoney(tx.amount ?? tx.value ?? 0)
     const dia = (tx.paid_at ?? tx.created_at ?? body.timestamp ?? '')
       .toString().includes('T')
       ? (tx.paid_at ?? tx.created_at ?? body.timestamp).split('T')[0]
@@ -175,7 +175,7 @@ function normalizePayload(body: any) {
 
   if (body.transaction_id || body.transactionId) {
     const id    = body.transaction_id ?? body.transactionId
-    const valor = parseFloat(body.amount ?? body.value ?? body.valor ?? '0')
+    const valor = parseMoney(body.amount ?? body.value ?? body.valor ?? 0)
     const dia   = body.created_at?.split('T')[0] ?? new Date().toISOString().split('T')[0]
     return {
       external_id: String(id), produto: body.product ?? body.produto ?? null,
@@ -193,7 +193,7 @@ function normalizePayload(body: any) {
   if (body.id && body.valor) {
     return {
       external_id: String(body.id), produto: body.produto ?? null,
-      categoria: body.categoria ?? null, valor: parseFloat(body.valor),
+      categoria: body.categoria ?? null, valor: parseMoney(body.valor),
       status: normalizeStatus(body.status),
       utm_source: body.utm_source ?? null, utm_medium: body.utm_medium ?? null,
       utm_campaign: body.utm_campaign ?? null, utm_content: body.utm_content ?? null,
@@ -205,6 +205,22 @@ function normalizePayload(body: any) {
   }
 
   return null
+}
+
+function parseMoney(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  if (typeof value !== 'string') return 0
+
+  const raw = value.trim()
+  if (!raw) return 0
+
+  const cleaned = raw
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    .replace(',', '.')
+
+  const parsed = Number(cleaned)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function venda_dia(tx: any, body: any): string {

@@ -16,15 +16,15 @@ const W_COLLAPSED = 60
 const W_EXPANDED  = 228
 
 const S = {
-  bg:           'rgba(8,8,14,0.97)',
-  border:       'rgba(255,255,255,0.055)',
+  bg:           '#0e1520',
+  border:       'rgba(148,163,184,0.08)',
   borderActive: 'rgba(59,130,246,0.25)',
   blue:         '#3b82f6',
   blueLight:    '#60a5fa',
   blueDim:      'rgba(59,130,246,0.10)',
-  text:         '#dcdcf0',
-  textSub:      '#9090b0',
-  textMuted:    '#50506a',
+  text:         '#e2e8f0',
+  textSub:      '#94a3b8',
+  textMuted:    '#475569',
 }
 
 export const SidebarContext = createContext<{ collapsed: boolean; setCollapsed: (v: boolean) => void }>({ collapsed: true, setCollapsed: () => {} })
@@ -35,15 +35,15 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 }
 
 const navMain = [
-  { label: 'Overview',    href: '/overview',      icon: LayoutDashboard, color: '#60a5fa' },
+  { label: 'Visão geral', href: '/overview',      icon: LayoutDashboard, color: S.blueLight },
   { label: 'Campanhas',   href: '/campanhas',     icon: TrendingUp,      color: '#34d399' },
   { label: 'Vendas',      href: '/vendas',        icon: ShoppingCart,    color: '#22d3ee' },
   { label: 'UTMs',        href: '/utms',          icon: Link2,           color: '#a78bfa' },
-  { label: 'Relatórios',  href: '/relatorios',    icon: FileText,        color: '#60a5fa' },
+  { label: 'Relatórios',  href: '/relatorios',    icon: FileText,        color: '#fbbf24' },
 ]
 const navSystem = [
-  { label: 'Integrações',   href: '/integracoes',   icon: Plug,     color: '#fbbf24' },
-  { label: 'Configurações', href: '/configuracoes', icon: Settings, color: S.textMuted },
+  { label: 'Integrações',   href: '/integracoes',   icon: Plug,     color: '#60a5fa' },
+  { label: 'Configurações', href: '/configuracoes', icon: Settings, color: '#94a3b8' },
 ]
 
 function NavItem({ href, icon: Icon, label, color, active, collapsed, onClick }: {
@@ -52,7 +52,7 @@ function NavItem({ href, icon: Icon, label, color, active, collapsed, onClick }:
 }) {
   const [hov, setHov] = useState(false)
   return (
-    <Link href={href} onClick={onClick}
+    <Link href={href} onClick={onClick} title={collapsed ? label : undefined} aria-label={label}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
         position: 'relative', display: 'flex', alignItems: 'center',
@@ -69,18 +69,40 @@ function NavItem({ href, icon: Icon, label, color, active, collapsed, onClick }:
           <motion.div layoutId="nav-active-bar"
             initial={{ opacity: 0, scaleY: 0 }} animate={{ opacity: 1, scaleY: 1 }} exit={{ opacity: 0, scaleY: 0 }}
             transition={{ duration: 0.2 }}
-            style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: 99, background: color, boxShadow: `0 0 12px ${color}cc` }}
+            style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: 99, background: color }}
           />
         )}
       </AnimatePresence>
-      {/* Hover glow */}
-      {hov && !active && (
-        <div aria-hidden style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse 80% 60% at 18% 50%, ${color}0c, transparent)`, borderRadius: 10, pointerEvents: 'none' }}/>
-      )}
       {/* Ícone */}
-      <div style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', zIndex: 1, filter: active ? `drop-shadow(0 0 5px ${color}99)` : 'none', transition: 'filter 0.2s' }}>
+      <div style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', zIndex: 1 }}>
         <Icon size={16} strokeWidth={active ? 2.2 : 1.8}/>
       </div>
+      <AnimatePresence>
+        {collapsed && hov && (
+          <motion.div
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -4 }}
+            transition={{ duration: 0.14 }}
+            style={{
+              position: 'fixed',
+              left: W_COLLAPSED + 8,
+              padding: '7px 10px',
+              borderRadius: 8,
+              background: 'rgba(15,22,35,0.98)',
+              border: `1px solid ${S.border}`,
+              boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+              color: S.text,
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "'DM Sans', sans-serif",
+              pointerEvents: 'none',
+              zIndex: 80,
+            }}>
+            {label}
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Label */}
       <motion.span
         animate={{ opacity: collapsed ? 0 : 1, x: collapsed ? -8 : 0 }}
@@ -92,7 +114,7 @@ function NavItem({ href, icon: Icon, label, color, active, collapsed, onClick }:
       <AnimatePresence>
         {active && !collapsed && (
           <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
-            style={{ width: 5, height: 5, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 7px ${color}`, position: 'relative', zIndex: 1 }}
+            style={{ width: 5, height: 5, borderRadius: '50%', background: color, flexShrink: 0, position: 'relative', zIndex: 1 }}
           />
         )}
       </AnimatePresence>
@@ -101,7 +123,7 @@ function NavItem({ href, icon: Icon, label, color, active, collapsed, onClick }:
 }
 
 function Sep() {
-  return <div style={{ height: 1, margin: '6px 8px', background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.15), transparent)' }}/>
+  return <div style={{ height: 1, margin: '6px 8px', background: 'rgba(148,163,184,0.08)' }}/>
 }
 
 function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean }) {
@@ -151,7 +173,7 @@ function MetaRing({ collapsed }: { collapsed: boolean }) {
 
   return (
     <Link href="/configuracoes" onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ display: 'flex', alignItems: 'center', height: 44, borderRadius: 10, padding: '0 10px', gap: 10, overflow: 'hidden', textDecoration: 'none', background: hov ? 'rgba(255,255,255,0.04)' : S.blueDim, border: `1px solid ${hov ? S.borderActive : 'rgba(59,130,246,0.08)'}`, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+      style={{ display: 'flex', alignItems: 'center', height: 44, borderRadius: 10, padding: '0 10px', gap: 10, overflow: 'hidden', textDecoration: 'none', background: hov ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${S.border}`, transition: 'background 0.15s', whiteSpace: 'nowrap' }}>
       <div style={{ flexShrink: 0, position: 'relative', width: 26, height: 26 }}>
         <svg width={26} height={26} viewBox="0 0 26 26" style={{ transform: 'rotate(-90deg)' }}>
           <circle cx={13} cy={13} r={10} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={2.5}/>
@@ -159,7 +181,6 @@ function MetaRing({ collapsed }: { collapsed: boolean }) {
             strokeDasharray={circ} initial={{ strokeDashoffset: circ }}
             animate={{ strokeDashoffset: circ - (circ * pct) / 100 }}
             transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-            style={{ filter: `drop-shadow(0 0 4px ${color}80)` }}
           />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -194,7 +215,7 @@ function LogoutButton({ collapsed }: { collapsed: boolean }) {
 
 function LogoMark({ glowing }: { glowing?: boolean }) {
   return (
-    <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: 'linear-gradient(135deg, #3b82f6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: glowing ? '0 0 18px rgba(59,130,246,0.55)' : 'none', transition: 'box-shadow 0.28s ease' }}>
+    <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Zap size={14} color="white"/>
     </div>
   )
@@ -225,20 +246,19 @@ export function SidebarDesktop() {
       style={{
         position: 'relative', display: 'flex', flexDirection: 'column',
         height: '100vh', flexShrink: 0,
-        background: S.bg, backdropFilter: 'blur(20px)',
-        borderRight: `1px solid ${collapsed ? S.border : S.borderActive}`,
-        boxShadow: collapsed ? '1px 0 0 rgba(255,255,255,0.03)' : '4px 0 40px rgba(0,0,0,0.4), 4px 0 32px rgba(59,130,246,0.08)',
-        transition: 'border-color 0.28s ease, box-shadow 0.28s ease',
+        background: S.bg,
+        borderRight: `1px solid ${S.border}`,
         zIndex: 30, overflow: 'hidden',
       }}>
       {/* Linha gradiente abaixo do logo */}
-      <div aria-hidden style={{ position: 'absolute', top: 47, left: 0, right: 0, height: 1, background: collapsed ? 'rgba(255,255,255,0.055)' : 'linear-gradient(90deg, transparent, rgba(59,130,246,0.4), rgba(99,102,241,0.25), transparent)', transition: 'background 0.28s ease', zIndex: 1, pointerEvents: 'none' }}/>
+      <div aria-hidden style={{ position: 'absolute', top: 47, left: 0, right: 0, height: 1, background: 'rgba(148,163,184,0.08)', zIndex: 1, pointerEvents: 'none' }}/>
 
       {/* Logo */}
       <div style={{ height: 48, display: 'flex', alignItems: 'center', flexShrink: 0, padding: '0 14px', overflow: 'hidden', gap: 10, position: 'relative' }}>
         <LogoMark glowing={!collapsed}/>
         <motion.div animate={{ opacity: collapsed ? 0 : 1, x: collapsed ? -10 : 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} style={{ overflow: 'hidden', flexShrink: 0 }}>
-          <span style={{ fontSize: 16, fontWeight: 800, color: '#f0f0ff', letterSpacing: '-0.03em', fontFamily: "'Syne', sans-serif", whiteSpace: 'nowrap' }}>TioTrack</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0', letterSpacing: '-0.03em', fontFamily: "'Syne', sans-serif", whiteSpace: 'nowrap' }}>TioTrack</span>
+          <p style={{ fontSize: 10, color: S.textMuted, fontFamily: "'DM Sans', sans-serif", marginTop: -2, whiteSpace: 'nowrap' }}>central de performance</p>
         </motion.div>
       </div>
 
@@ -256,20 +276,12 @@ export function SidebarDesktop() {
       </div>
 
       {/* Bottom */}
-      <div style={{ padding: '6px 6px 10px', borderTop: `1px solid ${collapsed ? S.border : S.borderActive}`, transition: 'border-color 0.28s ease', flexShrink: 0 }}>
+      <div style={{ padding: '6px 6px 10px', borderTop: `1px solid ${S.border}`, flexShrink: 0 }}>
         <MetaRing collapsed={collapsed}/>
         <div style={{ height: 4 }}/>
         <LogoutButton collapsed={collapsed}/>
       </div>
 
-      {/* Dica hover */}
-      <AnimatePresence>
-        {collapsed && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ delay: 0.7, duration: 0.6 }} aria-hidden
-            style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 56, borderRadius: '3px 0 0 3px', background: 'linear-gradient(180deg, transparent, rgba(59,130,246,0.55), transparent)', pointerEvents: 'none' }}
-          />
-        )}
-      </AnimatePresence>
     </motion.aside>
   )
 }

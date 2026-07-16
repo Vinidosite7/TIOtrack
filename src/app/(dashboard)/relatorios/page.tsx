@@ -6,6 +6,7 @@ import {
   RefreshCw, TrendingUp, TrendingDown,
   DollarSign, ShoppingCart, Percent, BookOpen,
   Plus, CheckCircle, X, BarChart2, Calendar,
+  Target, AlertTriangle, ArrowRight,
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar,
@@ -27,21 +28,19 @@ const T = {
 }
 const cardStyle: React.CSSProperties = {
   background: T.bg, border: `1px solid ${T.border}`,
-  backdropFilter: 'blur(14px)',
-  boxShadow: '0 4px 28px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03)',
-  borderRadius: 16, overflow: 'hidden',
+  borderRadius: 14, overflow: 'hidden',
 }
 const fadeUp = (delay = 0) => ({
-  initial: { opacity: 0, y: 12, filter: 'blur(4px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
-  transition: { duration: 0.4, delay, ease: [0.16, 1, 0.3, 1] as const },
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.3, delay, ease: [0.16, 1, 0.3, 1] as const },
 })
 
 type Period = 'hoje' | '7d' | '14d' | '30d'
 type DaySummary = { id: string; dia: string; receita_bruta: number|null; gasto_ads: number|null; custo_produto: number|null; lucro_liquido: number|null; margem: number|null; roas: number|null; vendas_count: number|null }
 type OpLog = { id: string; dia: string; titulo: string|null; conteudo: string; tipo: string|null; created_at: string }
 
-const toBRL     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+const toBRL     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const hoje      = () => new Date().toISOString().split('T')[0]
 const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0] }
 const fmtDia    = (s: string) => { const [,m,d] = s.split('-'); return `${d}/${m}` }
@@ -72,8 +71,36 @@ function ChartTip({ active, payload, label }: any) {
   )
 }
 
+function ExecutiveSignal({ icon: Icon, label, value, detail, color }: {
+  icon: React.ElementType
+  label: string
+  value: string
+  detail: string
+  color: string
+}) {
+  return (
+    <div style={{
+      padding: 14,
+      borderRadius: 12,
+      background: 'rgba(255,255,255,0.025)',
+      border: `1px solid ${T.border}`,
+      minWidth: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}12`, border: `1px solid ${color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={13} color={color}/>
+        </div>
+        <span style={{ fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, fontFamily: T.display }}>{label}</span>
+      </div>
+      <p style={{ fontSize: 20, color: T.text, fontFamily: T.display, fontWeight: 800, lineHeight: 1.05, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</p>
+      <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.45, fontFamily: T.sans }}>{detail}</p>
+    </div>
+  )
+}
+
 export default function RelatoriosPage() {
   const { active: workspace } = useWorkspaceStore()
+  const [isMobile, setIsMobile] = useState(false)
   const [loading, setLoading]   = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [period, setPeriod]     = useState<Period>('7d')
@@ -86,6 +113,12 @@ export default function RelatoriosPage() {
   const [logConteudo, setLogConteudo] = useState('')
   const [logDia, setLogDia]     = useState(hoje())
   const [savingLog, setSavingLog] = useState(false)
+
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 820)
+    fn(); window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
 
   async function load(wid: string, p: Period) {
     setLoading(true)
@@ -120,6 +153,15 @@ export default function RelatoriosPage() {
     Margem: s.margem != null ? s.margem * 100 : 0, Vendas: s.vendas_count ?? 0,
   })), [summaries])
 
+  const bestDay = useMemo(() => [...summaries].sort((a, b) => (b.lucro_liquido ?? 0) - (a.lucro_liquido ?? 0))[0], [summaries])
+  const weakDay = useMemo(() => [...summaries].sort((a, b) => (a.lucro_liquido ?? 0) - (b.lucro_liquido ?? 0))[0], [summaries])
+  const avgRevenue = summaries.length > 0 ? totais.receita / summaries.length : 0
+  const executiveStatus = totais.lucro > 0 && totais.roas >= 1.5 ? 'Operação lucrativa' : totais.receita > 0 ? 'Eficiência em atenção' : 'Aguardando dados'
+  const executiveDetail = totais.receita > 0
+    ? `${toBRL(avgRevenue)} de receita média por dia no período.`
+    : 'Assim que o resumo diário rodar, esta área mostra o fechamento executivo.'
+  const chartHasData = chartData.some(d => d.Receita > 0 || d.Gasto > 0 || d.Lucro !== 0 || d.Vendas > 0)
+
   async function handleSaveLog() {
     if (!workspace?.id || !logConteudo.trim()) return
     setSavingLog(true)
@@ -138,15 +180,15 @@ export default function RelatoriosPage() {
   const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.border}`, borderRadius: 8, color: T.text, fontSize: 12, outline: 'none', fontFamily: T.sans, boxSizing: 'border-box', transition: 'border-color 0.15s' }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', zIndex: 1 }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px 88px' : '16px 20px', display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', zIndex: 1 }}>
 
       {/* Header */}
-      <motion.div {...fadeUp(0)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+      <motion.div {...fadeUp(0)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontFamily: T.display, fontSize: 22, fontWeight: 800, color: T.text, letterSpacing: '-0.03em', margin: 0 }}>Relatórios</h1>
           <p style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, marginTop: 4 }}>{summaries.length} dias com dados</p>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           {(['hoje', '7d', '14d', '30d'] as Period[]).map(p => (
             <button key={p} onClick={() => setPeriod(p)}
               style={{ height: 30, padding: '0 12px', borderRadius: 8, background: period === p ? 'rgba(59,130,246,0.12)' : 'transparent', border: `1px solid ${period === p ? 'rgba(59,130,246,0.3)' : T.border}`, color: period === p ? '#60a5fa' : T.muted, fontSize: 11, cursor: 'pointer', fontFamily: T.sans, fontWeight: period === p ? 600 : 400, transition: 'all 0.15s' }}>
@@ -160,8 +202,50 @@ export default function RelatoriosPage() {
         </div>
       </motion.div>
 
+      <motion.div {...fadeUp(0.04)} style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'minmax(300px, 1.15fr) repeat(3, minmax(0, 0.75fr))',
+        gap: 12,
+        alignItems: 'stretch',
+      }}>
+        <div style={{
+          padding: 18,
+          borderRadius: 14,
+          background: 'linear-gradient(145deg, rgba(59,130,246,0.13), rgba(16,185,129,0.06) 58%, rgba(8,8,14,0.22))',
+          border: `1px solid ${T.border}`,
+          minHeight: 140,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+        }}>
+          <div>
+            <p style={{ fontSize: 10, color: T.blue, fontFamily: T.mono, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 800, marginBottom: 10 }}>
+              Fechamento executivo
+            </p>
+            <h2 style={{ fontFamily: T.display, fontSize: isMobile ? 19 : 22, lineHeight: 1.12, color: T.text, margin: 0, letterSpacing: '-0.02em' }}>
+              {executiveStatus}
+            </h2>
+            <p style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55, marginTop: 8, fontFamily: T.sans }}>
+              {executiveDetail}
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: totais.lucro >= 0 ? T.green : T.red, padding: '3px 9px', borderRadius: 999, background: totais.lucro >= 0 ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)', border: `1px solid ${totais.lucro >= 0 ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)'}`, fontFamily: T.sans, fontWeight: 700 }}>
+              {totais.lucro >= 0 ? 'lucro positivo' : 'lucro negativo'}
+            </span>
+            <button onClick={() => setShowForm(true)} style={{ height: 26, padding: '0 10px', borderRadius: 999, background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.22)', color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontFamily: T.sans, fontWeight: 700, cursor: 'pointer' }}>
+              Registrar nota <ArrowRight size={11}/>
+            </button>
+          </div>
+        </div>
+
+        <ExecutiveSignal icon={Target} label="Melhor dia" value={bestDay ? fmtDiaLong(bestDay.dia) : '—'} detail={bestDay ? `${toBRL(bestDay.lucro_liquido ?? 0)} de lucro` : 'sem dados suficientes'} color={T.green}/>
+        <ExecutiveSignal icon={AlertTriangle} label="Dia fraco" value={weakDay ? fmtDiaLong(weakDay.dia) : '—'} detail={weakDay ? `${toBRL(weakDay.lucro_liquido ?? 0)} de lucro` : 'sem dados suficientes'} color={T.amber}/>
+        <ExecutiveSignal icon={BookOpen} label="Notas" value={`${logs.length}`} detail="registros no diário da operação" color={T.cyan}/>
+      </motion.div>
+
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
         {[
           { label: 'Receita bruta',  value: toBRL(totais.receita), color: T.green,  icon: DollarSign,   sub: `${summaries.length} dias` },
           { label: 'Gasto em Ads',   value: toBRL(totais.gasto),   color: T.red,    icon: TrendingDown, sub: 'TikTok + Meta' },
@@ -213,6 +297,25 @@ export default function RelatoriosPage() {
             </div>
             {loading ? (
               <div style={{ height: 200, borderRadius: 8, background: 'rgba(255,255,255,0.03)', animation: 'sk 1.4s ease-in-out infinite', backgroundSize: '200% 100%' }}/>
+            ) : !chartHasData ? (
+              <div style={{
+                height: 200,
+                borderRadius: 12,
+                border: `1px dashed ${T.border}`,
+                background: 'linear-gradient(180deg, rgba(59,130,246,0.06), rgba(8,8,14,0.02))',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                padding: 18,
+              }}>
+                <div>
+                  <p style={{ fontSize: 13, color: T.text, fontFamily: T.display, fontWeight: 800, marginBottom: 6 }}>Sem fechamento no período</p>
+                  <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.45, maxWidth: 430, fontFamily: T.sans }}>
+                    Rode o resumo diário ou aguarde as vendas e gastos sincronizarem para alimentar DRE, ROAS e margem.
+                  </p>
+                </div>
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 {chartTab === 'dre' ? (
@@ -259,7 +362,7 @@ export default function RelatoriosPage() {
       </motion.div>
 
       {/* DRE + Diário */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, alignItems: 'start' }}>
 
         {/* DRE diário */}
         <motion.div {...fadeUp(0.28)}>
@@ -296,7 +399,9 @@ export default function RelatoriosPage() {
                     )
                   })}
                   {summaries.length === 0 && (
-                    <tr><td colSpan={6} style={{ padding: '24px', textAlign: 'center', fontSize: 12, color: T.muted, fontFamily: T.sans }}>Nenhum dado no período.</td></tr>
+                    <tr><td colSpan={6} style={{ padding: '26px 18px', textAlign: 'center', fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.5 }}>
+                      Nenhum fechamento diário neste período. O DRE aparece depois que o resumo diário processa vendas e gasto de mídia.
+                    </td></tr>
                   )}
                 </tbody>
               </table>
@@ -350,7 +455,14 @@ export default function RelatoriosPage() {
               {logs.length === 0 ? (
                 <div style={{ padding: '24px 0', textAlign: 'center' }}>
                   <BookOpen size={24} style={{ color: T.muted, margin: '0 auto 8px', display: 'block' }}/>
-                  <p style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>Nenhuma nota. Documente suas decisões!</p>
+                  <p style={{ fontSize: 13, color: T.text, fontWeight: 700, fontFamily: T.display, marginBottom: 4 }}>Nenhuma nota ainda</p>
+                  <p style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.45, maxWidth: 320, margin: '0 auto 12px' }}>
+                    Registre decisões, problemas e resultados para entender depois por que a operação mudou.
+                  </p>
+                  <button onClick={() => setShowForm(true)}
+                    style={{ height: 30, padding: '0 12px', borderRadius: 8, background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.28)', color: '#60a5fa', fontSize: 11, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: T.sans, fontWeight: 700 }}>
+                    <Plus size={11}/> Criar primeira nota
+                  </button>
                 </div>
               ) : logs.map(log => {
                 const cfg = TIPO_CFG[log.tipo ?? ''] ?? { color: T.muted, label: '📝 Nota' }
