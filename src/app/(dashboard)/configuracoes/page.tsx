@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/store/workspace'
 import { SpotlightCard, ShimmerButton, GlowCorner } from '@/components/ui/aceternity'
+import { usePush } from '@/hooks/usePush'
 
 // ─── Tokens (idênticos ao BossFlow) ──────────────────────────
 const T = {
@@ -100,6 +101,7 @@ function ConfigSignal({ icon: Icon, label, value, detail, color }: {
 export default function ConfiguracoesPage() {
   const router = useRouter()
   const { active: workspace, setActive, list } = useWorkspaceStore()
+  const push = usePush()
 
   const [isMobile, setIsMobile] = useState(false)
   const [loading, setLoading]   = useState(true)
@@ -108,6 +110,8 @@ export default function ConfiguracoesPage() {
   const [saved, setSaved]       = useState(false)
   const [saving, setSaving]     = useState(false)
   const [copied, setCopied]     = useState(false)
+  const [pushTesting, setPushTesting] = useState(false)
+  const [pushMessage, setPushMessage] = useState('')
   const [showPass, setShowPass] = useState({ new: false, confirm: false })
 
   // Forms
@@ -191,11 +195,58 @@ export default function ConfiguracoesPage() {
     router.replace('/login')
   }
 
+  async function handlePushToggle() {
+    if (!workspace?.id) return
+    setPushMessage('')
+    const ok = push.subscribed
+      ? (await push.unsubscribe(workspace.id), true)
+      : await push.subscribe(workspace.id)
+    setPushMessage(ok ? (push.subscribed ? 'Notificações desativadas neste aparelho.' : 'Notificações ativadas neste aparelho.') : 'Não foi possível ativar. No iPhone, abra pelo app instalado na Tela de Início.')
+  }
+
+  async function sendTestPush() {
+    if (!workspace?.id) return
+    setPushTesting(true)
+    setPushMessage('')
+    try {
+      const res = await fetch('/api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: workspace.id,
+          title: '⚡ TioTrack ativo',
+          body: 'Teste enviado. Quando uma venda aprovar, o alerta chega por aqui.',
+          url: '/vendas',
+        }),
+      })
+      const json = await res.json()
+      setPushMessage(json?.sent > 0 ? `Teste enviado para ${json.sent} aparelho(s).` : 'Nenhum aparelho inscrito ainda. Ative as notificações primeiro.')
+    } catch {
+      setPushMessage('Falha ao enviar teste. Confira as chaves VAPID na Vercel.')
+    } finally {
+      setPushTesting(false)
+    }
+  }
+
   const initials = profileForm.full_name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     || userAuth?.email?.charAt(0)?.toUpperCase() || '?'
   const metaNumber = metaMensal ? Number(metaMensal) : 0
   const metaDaily = metaNumber > 0 ? metaNumber / new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate() : 0
   const alertCount = Object.values(alertas).filter(Boolean).length
+  const pushStatus = !push.supported
+    ? 'Indisponível'
+    : push.subscribed
+      ? 'Ativo'
+      : push.permission === 'denied'
+        ? 'Bloqueado'
+        : 'Desativado'
+  const pushDetail = !push.supported
+    ? 'no iPhone, instale o site na Tela de Início e abra pelo app'
+    : push.subscribed
+      ? 'este aparelho recebe alertas de venda'
+      : push.permission === 'denied'
+        ? 'permissão negada no navegador/sistema'
+        : 'ative neste aparelho para receber vendas'
   const setupScore = [
     Boolean(profileForm.full_name),
     Boolean(workspace?.id),
@@ -266,9 +317,9 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        <ConfigSignal icon={Target} label="Meta mensal" value={metaNumber > 0 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(metaNumber) : '—'} detail={metaDaily > 0 ? `${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(metaDaily)}/dia` : 'defina uma meta para ativar projeções'} color={T.violet}/>
+        <ConfigSignal icon={Target} label="Meta mensal" value={metaNumber > 0 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(metaNumber) : '—'} detail={metaDaily > 0 ? `${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(metaDaily)}/dia` : 'defina uma meta para ativar projeções'} color={T.violet}/>
         <ConfigSignal icon={Webhook} label="Webhook" value={webhookUrl ? 'Ativo' : '—'} detail={webhookUrl ? 'checkout pode enviar vendas' : 'workspace necessário'} color={T.amber}/>
-        <ConfigSignal icon={Bell} label="Alertas" value={`${alertCount}`} detail="preferências ligadas no painel" color={T.green}/>
+        <ConfigSignal icon={Bell} label="Alertas" value={push.subscribed ? 'Push ativo' : `${alertCount}`} detail={push.subscribed ? 'notificações ligadas neste aparelho' : 'preferências ligadas no painel'} color={T.green}/>
       </motion.div>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
@@ -403,7 +454,7 @@ export default function ConfiguracoesPage() {
                         </div>
                         {metaDaily > 0 && (
                           <span style={{ fontSize: 11, color: T.violet, background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.22)', borderRadius: 999, padding: '4px 9px', fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(metaDaily)}/dia
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(metaDaily)}/dia
                           </span>
                         )}
                       </div>
@@ -446,11 +497,45 @@ export default function ConfiguracoesPage() {
                 <div style={{ padding: 24 }}>
                   <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 20 }}>Alertas automáticos</h2>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ padding: 18, borderRadius: 14, background: 'linear-gradient(135deg, rgba(34,211,238,0.10), rgba(59,130,246,0.08) 48%, rgba(16,185,129,0.05))', border: '1px solid rgba(96,165,250,0.18)', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 240, flex: 1 }}>
+                          <div style={{ width: 38, height: 38, borderRadius: 12, background: push.subscribed ? 'rgba(16,185,129,0.13)' : 'rgba(96,165,250,0.12)', border: `1px solid ${push.subscribed ? 'rgba(16,185,129,0.26)' : 'rgba(96,165,250,0.24)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Smartphone size={16} style={{ color: push.subscribed ? T.green : T.cyan }}/>
+                          </div>
+                          <div>
+                            <p style={{ fontSize: 15, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, letterSpacing: '-0.02em' }}>Push no iPhone e navegador</p>
+                            <p style={{ fontSize: 12, color: T.muted, fontFamily: "'DM Sans', sans-serif", marginTop: 4, lineHeight: 1.5 }}>
+                              Receba venda aprovada, PIX importante e alertas da operação. Status: <span style={{ color: push.subscribed ? T.green : push.permission === 'denied' ? T.red : T.cyan, fontWeight: 700 }}>{pushStatus}</span> — {pushDetail}.
+                            </p>
+                            <p style={{ fontSize: 11, color: T.muted, fontFamily: "'DM Sans', sans-serif", marginTop: 7, lineHeight: 1.45 }}>
+                              iPhone: abra no Safari, toque em compartilhar, “Adicionar à Tela de Início”, depois abra pelo ícone do TioTrack e ative aqui.
+                            </p>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <button onClick={handlePushToggle} disabled={!workspace?.id || push.loading || (!push.supported && typeof window !== 'undefined')}
+                            style={{ height: 36, padding: '0 14px', borderRadius: 10, background: push.subscribed ? 'rgba(239,68,68,0.10)' : 'rgba(16,185,129,0.13)', border: `1px solid ${push.subscribed ? 'rgba(239,68,68,0.24)' : 'rgba(16,185,129,0.28)'}`, color: push.subscribed ? T.red : T.green, fontSize: 12, fontWeight: 800, cursor: push.loading ? 'wait' : 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                            {push.loading ? 'Aguarde...' : push.subscribed ? 'Desativar' : 'Ativar neste aparelho'}
+                          </button>
+                          <button onClick={sendTestPush} disabled={!workspace?.id || pushTesting}
+                            style={{ height: 36, padding: '0 14px', borderRadius: 10, background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.26)', color: T.violet, fontSize: 12, fontWeight: 800, cursor: pushTesting ? 'wait' : 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                            {pushTesting ? 'Enviando...' : 'Enviar teste'}
+                          </button>
+                        </div>
+                      </div>
+                      {pushMessage && (
+                        <div style={{ marginTop: 12, padding: '9px 11px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.sub, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>
+                          {pushMessage}
+                        </div>
+                      )}
+                    </div>
+
                     {[
-                      { key: 'saldo_baixo',    label: 'Saldo baixo nos BCs',     desc: 'Alerta quando saldo TikTok ou Meta ficar abaixo de R$100',  color: T.amber },
+                      { key: 'saldo_baixo',    label: 'Saldo baixo nas contas',   desc: 'Alerta quando saldo TikTok ou Meta ficar abaixo do limite',  color: T.amber },
                       { key: 'meta_risco',     label: 'Meta em risco',           desc: 'Avisa quando o ritmo indica que a meta não será batida',    color: T.red   },
-                      { key: 'token_expirando',label: 'Token Meta expirando',    desc: 'Notifica quando o token do Meta Ads está prestes a expirar', color: T.violet },
-                      { key: 'resumo_diario',  label: 'Resumo diário',           desc: 'Receba um resumo automático todo dia às 20h',                color: T.green  },
+                      { key: 'token_expirando',label: 'Integração pedindo atenção', desc: 'Avisa quando token ou conexão precisar ser renovado',      color: T.violet },
+                      { key: 'resumo_diario',  label: 'Resumo diário',           desc: 'Receba um resumo automático da operação no fim do dia',      color: T.green  },
                     ].map(({ key, label, desc, color }) => (
                       <motion.div key={key} whileHover={{ x: 2 }}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 12, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T.border}` }}>

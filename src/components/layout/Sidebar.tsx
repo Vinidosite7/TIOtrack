@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, TrendingUp, ShoppingCart, Link2,
-  FileText, Plug, Settings, LogOut, Zap,
+  FileText, Plug, Settings, LogOut,
 } from 'lucide-react'
 import { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -215,8 +215,8 @@ function LogoutButton({ collapsed }: { collapsed: boolean }) {
 
 function LogoMark({ glowing }: { glowing?: boolean }) {
   return (
-    <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Zap size={14} color="white"/>
+    <div style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, background: 'rgba(7,10,18,0.75)', border: `1px solid ${glowing ? 'rgba(56,189,248,0.35)' : 'rgba(96,165,250,0.18)'}`, boxShadow: glowing ? '0 8px 24px rgba(56,189,248,0.18)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <img src="/icon-192.png" alt="TioTrack" width={34} height={34} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
     </div>
   )
 }
@@ -251,10 +251,10 @@ export function SidebarDesktop() {
         zIndex: 30, overflow: 'hidden',
       }}>
       {/* Linha gradiente abaixo do logo */}
-      <div aria-hidden style={{ position: 'absolute', top: 47, left: 0, right: 0, height: 1, background: 'rgba(148,163,184,0.08)', zIndex: 1, pointerEvents: 'none' }}/>
+      <div aria-hidden style={{ position: 'absolute', top: 55, left: 0, right: 0, height: 1, background: 'rgba(148,163,184,0.08)', zIndex: 1, pointerEvents: 'none' }}/>
 
       {/* Logo */}
-      <div style={{ height: 48, display: 'flex', alignItems: 'center', flexShrink: 0, padding: '0 14px', overflow: 'hidden', gap: 10, position: 'relative' }}>
+      <div style={{ height: 56, display: 'flex', alignItems: 'center', flexShrink: 0, padding: '0 13px', overflow: 'hidden', gap: 10, position: 'relative' }}>
         <LogoMark glowing={!collapsed}/>
         <motion.div animate={{ opacity: collapsed ? 0 : 1, x: collapsed ? -10 : 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} style={{ overflow: 'hidden', flexShrink: 0 }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0', letterSpacing: '-0.03em', fontFamily: "'Syne', sans-serif", whiteSpace: 'nowrap' }}>TioTrack</span>

@@ -35,6 +35,7 @@ const fadeUp = (delay = 0) => ({
 // ─── Types ────────────────────────────────────────────────────
 type Period = 'hoje' | '7d' | '30d'
 type StatusFilter = 'todos' | 'paid' | 'pending' | 'refunded' | 'chargeback'
+type PlatformFilter = 'todas' | string
 
 type Conversion = {
   id: string; created_at: string; dia: string | null
@@ -65,6 +66,17 @@ const timeAgo  = (s: string) => {
   if (m < 1440) return `${Math.floor(m/60)}h`; return `${Math.floor(m/1440)}d`
 }
 const decodeUtm = (s: string | null) => { try { return s ? decodeURIComponent(s) : null } catch { return s } }
+const cleanLabel = (s: string | null | undefined) => (s || '').trim().toLowerCase()
+const niceLabel = (s: string | null | undefined) => {
+  const v = cleanLabel(s)
+  if (!v) return ''
+  if (v === 'tiktok' || v === 'tt') return 'TikTok'
+  if (v === 'facebook' || v === 'fb' || v === 'meta' || v === 'instagram') return 'Meta'
+  if (v === 'kwai') return 'Kwai'
+  if (v === 'sharkbot') return 'SharkBot'
+  if (v === 'manual') return 'Manual'
+  return v.charAt(0).toUpperCase() + v.slice(1)
+}
 
 const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   paid:       { label: 'Pago',       color: T.green, bg: 'rgba(16,185,129,0.12)'  },
@@ -138,6 +150,7 @@ export default function VendasPage() {
   const [period, setPeriod]           = useState<Period>('7d')
   const [search, setSearch]           = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos')
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('todas')
   const [page, setPage]               = useState(1)
   const [refreshing, setRefreshing]   = useState(false)
   const [expanded, setExpanded]       = useState<string | null>(null)
@@ -175,7 +188,7 @@ export default function VendasPage() {
       }
     })
     setChartData(Object.entries(map).map(([dia, v]) => ({
-      dia: fmtDia(dia), receita: Math.round(v.receita), pix: Math.round(v.pix),
+      dia: fmtDia(dia), receita: v.receita, pix: v.pix,
     })))
     setLoading(false)
   }, [])
@@ -191,6 +204,8 @@ export default function VendasPage() {
     setRefreshing(false)
   }
 
+  const platforms = Array.from(new Set(conversions.map(c => cleanLabel(c.payment_platform)).filter(Boolean))).sort()
+
   // Filtros
   const filtered = conversions.filter(c => {
     const q = search.toLowerCase()
@@ -202,7 +217,8 @@ export default function VendasPage() {
       decodeUtm(c.utm_campaign)?.toLowerCase().includes(q)
     )
     const matchStatus = statusFilter === 'todos' || c.status === statusFilter
-    return matchSearch && matchStatus
+    const matchPlatform = platformFilter === 'todas' || cleanLabel(c.payment_platform) === platformFilter
+    return matchSearch && matchStatus && matchPlatform
   })
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE)
@@ -218,8 +234,10 @@ export default function VendasPage() {
   const captureRate = filtered.length > 0 ? Math.round((totalVendas / filtered.length) * 100) : 0
   const chartHasData = chartData.some(d => (d.receita ?? 0) > 0 || (d.pix ?? 0) > 0)
   const sourceMap = filtered.reduce((acc: Record<string, number>, c) => {
-    const source = decodeUtm(c.utm_source) || c.payment_platform || 'sem origem'
-    acc[source] = (acc[source] ?? 0) + (c.status === 'paid' ? c.valor ?? 0 : 0)
+    const source = niceLabel(decodeUtm(c.utm_source)) || niceLabel(c.payment_platform) || 'Sem origem'
+    const platform = niceLabel(c.payment_platform)
+    const label = platform && platform !== source ? `${source} · ${platform}` : source
+    acc[label] = (acc[label] ?? 0) + (c.status === 'paid' ? c.valor ?? 0 : 0)
     return acc
   }, {})
   const topSource = Object.entries(sourceMap).sort((a, b) => b[1] - a[1])[0]
@@ -434,6 +452,13 @@ export default function VendasPage() {
               })}
             </div>
 
+            {/* Plataforma */}
+            <select value={platformFilter} onChange={e => { setPlatformFilter(e.target.value); setPage(1) }}
+              style={{ height: 30, padding: '0 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", background: platformFilter === 'todas' ? 'rgba(255,255,255,0.025)' : 'rgba(34,211,238,0.10)', color: platformFilter === 'todas' ? T.muted : T.cyan, border: `1px solid ${platformFilter === 'todas' ? T.border : 'rgba(34,211,238,0.28)'}`, outline: 'none' }}>
+              <option value="todas">Todas plataformas</option>
+              {platforms.map(p => <option key={p} value={p}>{niceLabel(p)}</option>)}
+            </select>
+
             <span style={{ fontSize: 11, color: T.muted, marginLeft: 'auto', fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} registros</span>
           </div>
 
@@ -449,16 +474,16 @@ export default function VendasPage() {
               </div>
               <div>
                 <p style={{ fontSize: 17, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, marginBottom: 6 }}>
-                  {search || statusFilter !== 'todos' ? 'Nada encontrado nesse filtro' : 'Nenhuma venda recebida ainda'}
+                  {search || statusFilter !== 'todos' || platformFilter !== 'todas' ? 'Nada encontrado nesse filtro' : 'Nenhuma venda recebida ainda'}
                 </p>
                 <p style={{ fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 440, fontFamily: "'DM Sans', sans-serif" }}>
-                  {search || statusFilter !== 'todos'
+                  {search || statusFilter !== 'todos' || platformFilter !== 'todas'
                     ? 'Limpe a busca ou troque o status para voltar à lista completa.'
                     : 'Conecte o webhook do checkout para o TioTrack receber vendas, PIX pendente, reembolso e UTMs automaticamente.'}
                 </p>
               </div>
-              {(search || statusFilter !== 'todos') ? (
-                <button onClick={() => { setSearch(''); setStatusFilter('todos'); setPage(1) }}
+              {(search || statusFilter !== 'todos' || platformFilter !== 'todas') ? (
+                <button onClick={() => { setSearch(''); setStatusFilter('todos'); setPlatformFilter('todas'); setPage(1) }}
                   style={{ height: 34, padding: '0 14px', borderRadius: 9, background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                   Limpar filtros <X size={12}/>
                 </button>

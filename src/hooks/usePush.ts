@@ -16,7 +16,7 @@ export function usePush() {
   }
 
   useEffect(() => {
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
+    if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window) {
       setSupported(true)
       setPermission(Notification.permission)
       navigator.serviceWorker.ready.then(reg => {

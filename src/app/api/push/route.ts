@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       } catch (err: any) {
         // Remove subscription inválida
         if (err.statusCode === 410) {
-          await supabaseAdmin.from('push_subscriptions').delete().eq('subscription', sub.subscription)
+          await supabaseAdmin.from('push_subscriptions').delete().eq('endpoint', sub.subscription?.endpoint)
         }
       }
     }
@@ -53,6 +53,7 @@ export async function PUT(req: NextRequest) {
 
     await supabaseAdmin.from('push_subscriptions').upsert({
       workspace_id,
+      endpoint: subscription.endpoint,
       subscription,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'workspace_id,endpoint' })

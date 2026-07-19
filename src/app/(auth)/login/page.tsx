@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowRight, Eye, EyeOff, Loader2, Zap, ShieldCheck, Link2, Radio, Target } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Loader2, ShieldCheck, Link2, Radio, Target } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { LampEffect, FloatingOrbs } from '@/components/ui/aceternity'
 
@@ -75,9 +75,9 @@ export default function LoginPage() {
         <div style={{ position:'absolute', bottom:'-10%', right:'-5%', width:400, height:400, pointerEvents:'none', background:'radial-gradient(circle at center, rgba(16,185,129,0.08) 0%, transparent 60%)', filter:'blur(40px)', animation:'orb-b 25s ease-in-out infinite' }}/>
 
         {/* Logo */}
-        <div style={{ position:'relative', zIndex:1, alignSelf:'flex-start', display:'flex', alignItems:'center', gap:10, marginBottom:32 }}>
-          <div style={{ width:34, height:34, borderRadius:10, background:'linear-gradient(135deg, #3B82F6, #6366F1)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 20px rgba(59,130,246,0.4)' }}>
-            <Zap size={16} color="#fff"/>
+        <div style={{ position:'relative', zIndex:1, alignSelf:'flex-start', display:'flex', alignItems:'center', gap:11, marginBottom:32 }}>
+          <div style={{ width:42, height:42, borderRadius:13, background:'rgba(7,10,18,0.7)', border:'1px solid rgba(96,165,250,0.22)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 28px rgba(56,189,248,0.18)', overflow:'hidden' }}>
+            <img src="/icon-192.png" alt="TioTrack" width={42} height={42} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
           </div>
           <span style={{ fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.03em' }}>TioTrack</span>
         </div>
@@ -150,8 +150,8 @@ export default function LoginPage() {
 
           {/* Logo mobile */}
           <div style={{ display:'flex', alignItems:'center', gap:10 }} className="auth-logo-mobile">
-            <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg, #3B82F6, #6366F1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <Zap size={14} color="#fff"/>
+            <div style={{ width:34, height:34, borderRadius:11, background:'rgba(7,10,18,0.72)', border:'1px solid rgba(96,165,250,0.22)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', boxShadow:'0 8px 22px rgba(56,189,248,0.16)' }}>
+              <img src="/icon-192.png" alt="TioTrack" width={34} height={34} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
             </div>
             <span style={{ fontSize:16, fontWeight:800, color:'#fff', letterSpacing:'-0.02em' }}>TioTrack</span>
           </div>
