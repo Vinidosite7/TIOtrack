@@ -59,6 +59,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const secret = req.headers.get('x-cron-secret') ?? new URL(req.url).searchParams.get('secret')
+  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const { searchParams } = new URL(req.url)
   const workspace_id = searchParams.get('wid')
   const dias = parseInt(searchParams.get('dias') ?? '30')

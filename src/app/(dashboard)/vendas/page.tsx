@@ -1,593 +1,205 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Download, Search, CircleDollarSign, Clock, Ticket, Percent, RotateCcw } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import {
-  TrendingUp, TrendingDown, Search, X, Download,
-  ChevronLeft, ChevronRight, ShoppingCart, Clock,
-  CheckCircle, RotateCcw, AlertTriangle, RefreshCw,
-  Target, Radio, ArrowRight,
-} from 'lucide-react'
-import { motion, AnimatePresence, animate } from 'framer-motion'
-import {
-  AreaChart, Area, XAxis, YAxis, Tooltip as RTooltip,
-  ResponsiveContainer, CartesianGrid, BarChart, Bar,
-} from 'recharts'
-import { SpotlightCard, GlowCorner } from '@/components/ui/aceternity'
 import { useWorkspaceStore } from '@/store/workspace'
+import {
+  H, Panel, PanelHead, KpiCard, PageHeader, PeriodSegment, RefreshBtn, BarRow, StatusPill, Pager, Empty,
+  brl, num, pctDelta, PERIOD_LABEL, type Period,
+} from '@/components/hawk/ui'
+import { HawkBars, SeriesLegend, dayBuckets, type SeriesDef } from '@/components/hawk/charts'
 
-// ─── Tokens ───────────────────────────────────────────────────
-const T = {
-  bg: 'rgba(8,8,14,0.92)', border: 'rgba(255,255,255,0.055)',
-  text: '#dcdcf0', sub: '#8a8aaa', muted: '#4a4a6a',
-  green: '#10b981', red: '#ef4444', amber: '#f59e0b',
-  blue: '#3b82f6', cyan: '#22d3ee', purple: '#a78bfa',
-}
-const cardStyle: React.CSSProperties = {
-  background: T.bg, border: `1px solid ${T.border}`,
-}
-const fadeUp = (delay = 0) => ({
-  initial: { opacity: 0, y: 16, filter: 'blur(4px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
-  transition: { duration: 0.46, delay, ease: [0.16, 1, 0.3, 1] as const },
-})
+type Conversion = { id: string; created_at: string; dia: string | null; customer_name: string | null; valor: number; status: string; produto: string | null; utm_source: string | null; utm_campaign: string | null; payment_method: string | null; payment_platform: string | null }
 
-// ─── Types ────────────────────────────────────────────────────
-type Period = 'hoje' | '7d' | '30d'
-type StatusFilter = 'todos' | 'paid' | 'pending' | 'refunded' | 'chargeback'
-type PlatformFilter = 'todas' | string
-
-type Conversion = {
-  id: string; created_at: string; dia: string | null
-  customer_name: string | null; valor: number; status: string
-  produto: string | null; utm_source: string | null
-  utm_campaign: string | null; utm_medium: string | null
-  utm_content: string | null; payment_method: string | null
-  payment_platform: string | null
+const iso = (d: Date) => d.toISOString().slice(0, 10)
+const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
+const DAYS: Record<Period, number> = { hoje: 1, '7d': 7, '30d': 30 }
+const fmtTime = (s: string) => new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+const decode = (s: string | null) => { try { return s ? decodeURIComponent(s) : '' } catch { return s || '' } }
+const STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' }> = {
+  paid: { label: 'Pago', tone: 'good' }, pending: { label: 'Pendente', tone: 'warn' }, refunded: { label: 'Reembolso', tone: 'bad' },
+  chargeback: { label: 'Chargeback', tone: 'bad' }, cancelled: { label: 'Cancelado', tone: 'neutral' },
 }
+const SERIES: SeriesDef[] = [{ key: 'receita', label: 'Pago', tone: 'light' }, { key: 'pix', label: 'Pendente', tone: 'dim' }]
+const PER_PAGE = 25
 
-type RevenueSignalProps = {
-  label: string
-  value: string
-  detail: string
-  color: string
-  icon: React.ElementType
-}
-
-// ─── Helpers ──────────────────────────────────────────────────
-const toBRL    = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const hoje     = () => new Date().toISOString().split('T')[0]
-const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0] }
-const fmtDia   = (s: string) => { const [,m,d] = s.split('-'); return `${d}/${m}` }
-const fmtTime  = (s: string) => new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-const timeAgo  = (s: string) => {
-  const m = Math.floor((Date.now() - new Date(s).getTime()) / 60000)
-  if (m < 1) return 'agora'; if (m < 60) return `${m}min`
-  if (m < 1440) return `${Math.floor(m/60)}h`; return `${Math.floor(m/1440)}d`
-}
-const decodeUtm = (s: string | null) => { try { return s ? decodeURIComponent(s) : null } catch { return s } }
-const cleanLabel = (s: string | null | undefined) => (s || '').trim().toLowerCase()
-const niceLabel = (s: string | null | undefined) => {
-  const v = cleanLabel(s)
-  if (!v) return ''
-  if (v === 'tiktok' || v === 'tt') return 'TikTok'
-  if (v === 'facebook' || v === 'fb' || v === 'meta' || v === 'instagram') return 'Meta'
-  if (v === 'kwai') return 'Kwai'
-  if (v === 'sharkbot') return 'SharkBot'
-  if (v === 'manual') return 'Manual'
-  return v.charAt(0).toUpperCase() + v.slice(1)
-}
-
-const STATUS: Record<string, { label: string; color: string; bg: string }> = {
-  paid:       { label: 'Pago',       color: T.green, bg: 'rgba(16,185,129,0.12)'  },
-  pending:    { label: 'Pendente',   color: T.amber, bg: 'rgba(245,158,11,0.12)'  },
-  refunded:   { label: 'Reembolso',  color: T.red,   bg: 'rgba(239,68,68,0.12)'   },
-  chargeback: { label: 'Chargeback', color: T.red,   bg: 'rgba(239,68,68,0.12)'   },
-  cancelled:  { label: 'Cancelado',  color: T.muted, bg: 'rgba(100,116,139,0.1)'  },
-}
-
-// ─── AnimatedNumber ───────────────────────────────────────────
-function AnimNum({ value, format }: { value: number; format: (v: number) => string }) {
-  const [display, setDisplay] = useState(format(0))
-  const prev = useRef(0)
-  useEffect(() => {
-    const from = prev.current; prev.current = value
-    const c = animate(from, value, {
-      duration: 0.85, ease: [0.16, 1, 0.3, 1] as any,
-      onUpdate: v => setDisplay(format(v)),
-    })
-    return c.stop
-  }, [value])
-  return <span>{display}</span>
-}
-
-// ─── Chart tooltip ────────────────────────────────────────────
-function ChartTip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
-  return (
-    <div style={{ background: 'rgba(10,10,18,0.97)', border: `1px solid ${T.border}`, borderRadius: 12, padding: '10px 14px', fontSize: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.75)' }}>
-      <p style={{ color: T.muted, marginBottom: 8, fontWeight: 600 }}>{label}</p>
-      {payload.map((p: any) => (
-        <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, display: 'inline-block', boxShadow: `0 0 6px ${p.color}` }}/>
-          <span style={{ color: T.muted }}>{p.dataKey === 'receita' ? 'Receita' : 'PIX'}</span>
-          <span style={{ color: p.color, fontWeight: 600 }}>{toBRL(p.value)}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function RevenueSignal({ label, value, detail, color, icon: Icon }: RevenueSignalProps) {
-  return (
-    <div style={{
-      padding: 14,
-      borderRadius: 12,
-      background: 'rgba(255,255,255,0.025)',
-      border: `1px solid ${T.border}`,
-      minWidth: 0,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}12`, border: `1px solid ${color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon size={13} color={color}/>
-        </div>
-        <span style={{ fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>{label}</span>
-      </div>
-      <p style={{ fontSize: 22, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, lineHeight: 1, marginBottom: 6 }}>{value}</p>
-      <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.45, fontFamily: "'DM Sans', sans-serif" }}>{detail}</p>
-    </div>
-  )
-}
-
-// ─── MAIN ─────────────────────────────────────────────────────
 export default function VendasPage() {
-  const { active: workspace } = useWorkspaceStore()
+  const { active } = useWorkspaceStore()
+  const [period, setPeriod] = useState<Period>('7d')
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [all, setAll] = useState<Conversion[]>([])
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('todos')
+  const [platform, setPlatform] = useState('todas')
+  const [hidden, setHidden] = useState<Record<string, boolean>>({})
+  const [page, setPage] = useState(0)
 
-  const [isMobile, setIsMobile] = useState(false)
-  const [loading, setLoading]   = useState(true)
-  const [conversions, setConversions] = useState<Conversion[]>([])
-  const [chartData, setChartData]     = useState<any[]>([])
-  const [period, setPeriod]           = useState<Period>('7d')
-  const [search, setSearch]           = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos')
-  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('todas')
-  const [page, setPage]               = useState(1)
-  const [refreshing, setRefreshing]   = useState(false)
-  const [expanded, setExpanded]       = useState<string | null>(null)
-  const PER_PAGE = 15
+  const r = useMemo(() => {
+    const n = DAYS[period], today = new Date()
+    const from = addDays(today, -(n - 1)), prevTo = addDays(from, -1)
+    return { from: iso(from), to: iso(today), prevFrom: iso(addDays(prevTo, -(n - 1))), prevTo: iso(prevTo), days: n }
+  }, [period])
 
-  useEffect(() => {
-    const fn = () => setIsMobile(window.innerWidth < 820)
-    fn(); window.addEventListener('resize', fn)
-    return () => window.removeEventListener('resize', fn)
-  }, [])
-
-  const loadData = useCallback(async (wid: string, p: Period) => {
+  const load = useCallback(async () => {
+    if (!active?.id) return
     setLoading(true)
-    const diff = p === 'hoje' ? 0 : p === '7d' ? 7 : 30
-    const from = p === 'hoje' ? hoje() : diasAtras(diff), h = hoje()
+    const { data } = await supabase.from('conversions').select('*').eq('workspace_id', active.id).gte('dia', r.prevFrom).lte('dia', r.to).order('created_at', { ascending: false })
+    setAll((data || []) as Conversion[])
+    setLoading(false); setRefreshing(false)
+  }, [active?.id, r])
+  useEffect(() => { load() }, [load])
+  useEffect(() => { setPage(0) }, [search, status, platform, period])
 
-    const [{ data: convs }, { data: spends }] = await Promise.all([
-      supabase.from('conversions').select('*').eq('workspace_id', wid).gte('dia', from).lte('dia', h).order('created_at', { ascending: false }),
-      supabase.from('ad_spend_daily').select('dia,spend').eq('workspace_id', wid).gte('dia', from).lte('dia', h),
-    ])
+  const cur = useMemo(() => all.filter(c => c.dia && c.dia >= r.from && c.dia <= r.to), [all, r])
+  const prev = useMemo(() => all.filter(c => c.dia && c.dia >= r.prevFrom && c.dia <= r.prevTo), [all, r])
+  const platforms = useMemo(() => Array.from(new Set(cur.map(c => (c.payment_platform || '').trim()).filter(Boolean))).sort(), [cur])
 
-    setConversions(convs || [])
+  const base = useMemo(() => cur.filter(c => {
+    const q = search.trim().toLowerCase()
+    const mq = !q || `${c.customer_name || ''} ${c.produto || ''} ${c.payment_platform || ''} ${decode(c.utm_source)} ${decode(c.utm_campaign)}`.toLowerCase().includes(q)
+    return mq && (platform === 'todas' || c.payment_platform === platform)
+  }), [cur, search, platform])
+  const filtered = useMemo(() => status === 'todos' ? base : base.filter(c => c.status === status), [base, status])
 
-    // Chart — dia a dia
-    const map: Record<string, { receita: number; pix: number }> = {}
-    const days = p === 'hoje' ? 1 : diff
-    for (let i = days - 1; i >= 0; i--) {
-      const d = diasAtras(i)
-      map[d] = { receita: 0, pix: 0 }
+  const k = useMemo(() => {
+    const agg = (list: Conversion[]) => {
+      const paid = list.filter(c => c.status === 'paid'), pend = list.filter(c => c.status === 'pending')
+      const loss = list.filter(c => c.status === 'refunded' || c.status === 'chargeback')
+      const s = (l: Conversion[]) => l.reduce((a, c) => a + Number(c.valor || 0), 0)
+      const receita = s(paid)
+      return { paid, pend, loss, receita, pix: s(pend), perdas: s(loss), ticket: paid.length ? receita / paid.length : 0, conv: paid.length + pend.length ? paid.length / (paid.length + pend.length) : 0 }
     }
-    ;(convs || []).forEach((c: any) => {
-      if (c.dia && map[c.dia]) {
-        if (c.status === 'paid') map[c.dia].receita += c.valor ?? 0
-        if (c.status === 'pending') map[c.dia].pix += c.valor ?? 0
-      }
-    })
-    setChartData(Object.entries(map).map(([dia, v]) => ({
-      dia: fmtDia(dia), receita: v.receita, pix: v.pix,
-    })))
-    setLoading(false)
-  }, [])
+    return { c: agg(base), p: agg(prev) }
+  }, [base, prev])
 
-  useEffect(() => {
-    if (workspace?.id) loadData(workspace.id, period)
-  }, [workspace?.id, period])
+  const chart = useMemo(() => {
+    if (period === 'hoje') {
+      const hours = Array.from({ length: new Date().getHours() + 1 }, (_, h) => ({ label: `${String(h).padStart(2, '0')}h`, receita: 0, pix: 0 }))
+      for (const c of base) { const h = new Date(c.created_at).getHours(); if (!hours[h]) continue; if (c.status === 'paid') hours[h].receita += c.valor; if (c.status === 'pending') hours[h].pix += c.valor }
+      return hours
+    }
+    const days = dayBuckets(r.from, r.days).map(d => ({ ...d, receita: 0, pix: 0 }))
+    const idx = Object.fromEntries(days.map((d, i) => [d.dia, i]))
+    for (const c of base) { const i = idx[c.dia || '']; if (i == null) continue; if (c.status === 'paid') days[i].receita += c.valor; if (c.status === 'pending') days[i].pix += c.valor }
+    return days
+  }, [base, r, period])
 
-  async function handleRefresh() {
-    if (!workspace?.id) return
-    setRefreshing(true)
-    await loadData(workspace.id, period)
-    setRefreshing(false)
-  }
-
-  const platforms = Array.from(new Set(conversions.map(c => cleanLabel(c.payment_platform)).filter(Boolean))).sort()
-
-  // Filtros
-  const filtered = conversions.filter(c => {
-    const q = search.toLowerCase()
-    const matchSearch = !search || (
-      c.customer_name?.toLowerCase().includes(q) ||
-      c.produto?.toLowerCase().includes(q) ||
-      c.payment_platform?.toLowerCase().includes(q) ||
-      decodeUtm(c.utm_source)?.toLowerCase().includes(q) ||
-      decodeUtm(c.utm_campaign)?.toLowerCase().includes(q)
-    )
-    const matchStatus = statusFilter === 'todos' || c.status === statusFilter
-    const matchPlatform = platformFilter === 'todas' || cleanLabel(c.payment_platform) === platformFilter
-    return matchSearch && matchStatus && matchPlatform
-  })
-
-  const totalPages = Math.ceil(filtered.length / PER_PAGE)
-  const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
-
-  const receita  = filtered.filter(c => c.status === 'paid').reduce((s, c) => s + (c.valor ?? 0), 0)
-  const pix      = filtered.filter(c => c.status === 'pending').reduce((s, c) => s + (c.valor ?? 0), 0)
-  const reemb    = filtered.filter(c => c.status === 'refunded' || c.status === 'chargeback').reduce((s, c) => s + (c.valor ?? 0), 0)
-  const totalVendas = filtered.filter(c => c.status === 'paid').length
-  const pendingCount = filtered.filter(c => c.status === 'pending').length
-  const problemCount = filtered.filter(c => c.status === 'refunded' || c.status === 'chargeback').length
-  const ticketMedio = totalVendas > 0 ? receita / totalVendas : 0
-  const captureRate = filtered.length > 0 ? Math.round((totalVendas / filtered.length) * 100) : 0
-  const chartHasData = chartData.some(d => (d.receita ?? 0) > 0 || (d.pix ?? 0) > 0)
-  const sourceMap = filtered.reduce((acc: Record<string, number>, c) => {
-    const source = niceLabel(decodeUtm(c.utm_source)) || niceLabel(c.payment_platform) || 'Sem origem'
-    const platform = niceLabel(c.payment_platform)
-    const label = platform && platform !== source ? `${source} · ${platform}` : source
-    acc[label] = (acc[label] ?? 0) + (c.status === 'paid' ? c.valor ?? 0 : 0)
-    return acc
-  }, {})
-  const topSource = Object.entries(sourceMap).sort((a, b) => b[1] - a[1])[0]
+  const bySource = useMemo(() => {
+    const m: Record<string, { v: number; n: number }> = {}
+    for (const c of k.c.paid) { const key = decode(c.utm_source) || 'Sem origem'; m[key] ||= { v: 0, n: 0 }; m[key].v += c.valor; m[key].n++ }
+    return Object.entries(m).sort((a, b) => b[1].v - a[1].v)
+  }, [k])
+  const byPlatform = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const c of k.c.paid) { const key = c.payment_platform || '—'; m[key] = (m[key] || 0) + c.valor }
+    return Object.entries(m).sort((a, b) => b[1] - a[1])
+  }, [k])
 
   function exportCSV() {
-    const rows = [
-      ['Data', 'Cliente', 'Produto', 'Valor', 'Status', 'Fonte', 'Campanha', 'Pagamento'],
-      ...filtered.map(c => [
-        fmtTime(c.created_at), c.customer_name || '', c.produto || '',
-        c.valor, c.status, decodeUtm(c.utm_source) || '', decodeUtm(c.utm_campaign) || '',
-        c.payment_method || '',
-      ]),
-    ]
-    const csv  = rows.map(r => r.join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a'); a.href = url
-    a.download = `vendas-${period}.csv`; a.click()
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const rows = [['Data', 'Cliente', 'Produto', 'Valor', 'Status', 'Fonte', 'Campanha', 'Plataforma', 'Pagamento'], ...filtered.map(c => [fmtTime(c.created_at), c.customer_name, c.produto, c.valor, c.status, decode(c.utm_source), decode(c.utm_campaign), c.payment_platform, c.payment_method])]
+    const blob = new Blob(['﻿' + rows.map(r => r.map(esc).join(';')).join('\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `vendas-${period}-${r.to}.csv`; a.click(); URL.revokeObjectURL(url)
   }
 
+  const counts: Record<string, number> = { todos: base.length }
+  for (const c of base) counts[c.status] = (counts[c.status] || 0) + 1
+  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE))
+
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px 88px' : '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, position: 'relative', zIndex: 1 }}>
+    <div className="shell-page">
+      <PageHeader title="Vendas" sub={`${active?.nome || 'Workspace'} · ${PERIOD_LABEL[period].toLowerCase()} · comparado ao período anterior`}
+        right={<>
+          <PeriodSegment value={period} onChange={setPeriod} />
+          <button className="tt-btn" onClick={exportCSV}><Download size={14} /> Exportar</button>
+          <RefreshBtn spinning={refreshing} onClick={() => { setRefreshing(true); load() }} />
+        </>} />
 
-      {/* Header */}
-      <motion.div {...fadeUp(0)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 800, color: T.text, letterSpacing: '-0.03em', margin: 0 }}>Vendas</h1>
-          <p style={{ fontSize: 13, color: T.muted, fontFamily: "'DM Sans', sans-serif", marginTop: 4 }}>
-            {period === 'hoje' ? 'Hoje' : period === '7d' ? 'Últimos 7 dias' : 'Últimos 30 dias'}
-            {' · '}{conversions.length} registros
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {/* Período */}
-          {(['hoje', '7d', '30d'] as Period[]).map(p => (
-            <button key={p} onClick={() => { setPeriod(p); setPage(1) }}
-              style={{ height: 32, padding: '0 14px', borderRadius: 8, fontSize: 12, fontWeight: period === p ? 600 : 400, cursor: 'pointer', transition: 'all 0.15s', fontFamily: "'DM Sans', sans-serif", background: period === p ? 'rgba(59,130,246,0.12)' : 'transparent', color: period === p ? '#60a5fa' : T.muted, border: `1px solid ${period === p ? 'rgba(59,130,246,0.3)' : T.border}` }}>
-              {p === 'hoje' ? 'Hoje' : p}
-            </button>
-          ))}
-          <button onClick={exportCSV}
-            style={{ height: 32, padding: '0 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>
-            <Download size={13}/> Exportar
-          </button>
-          <button onClick={handleRefresh}
-            style={{ width: 32, height: 32, borderRadius: 8, background: 'transparent', border: `1px solid ${T.border}`, color: T.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <RefreshCw size={13} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }}/>
-          </button>
-        </div>
-      </motion.div>
-
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
-        {[
-          { label: 'Receita',    value: receita,      color: T.green,  icon: TrendingUp,   format: toBRL },
-          { label: 'PIX Gerado', value: pix,          color: T.amber,  icon: Clock,        format: toBRL },
-          { label: 'Reembolsos', value: reemb,        color: T.red,    icon: TrendingDown, format: toBRL },
-          { label: 'Vendas',     value: totalVendas,  color: T.blue,   icon: ShoppingCart, format: (v: number) => `${Math.round(v)}` },
-        ].map(({ label, value, color, icon: Icon, format }, i) => (
-          <motion.div key={label} {...fadeUp(0.06 + i * 0.06)}>
-            <SpotlightCard spotlightColor={`${color}14`} style={{ ...cardStyle, borderRadius: 14, height: '100%' }}>
-              <div style={{ padding: 20, position: 'relative', overflow: 'hidden' }}>
-                <GlowCorner color={`${color}20`} position="bottom-right"/>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, position: 'relative', zIndex: 1 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Syne', sans-serif" }}>{label}</span>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}12`, border: `1px solid ${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon size={13} style={{ color }} strokeWidth={2}/>
-                  </div>
-                </div>
-                <p style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Syne', sans-serif", color: T.text, position: 'relative', zIndex: 1, letterSpacing: '-0.02em' }}>
-                  {loading ? '—' : <AnimNum value={value} format={format}/>}
-                </p>
-              </div>
-            </SpotlightCard>
-          </motion.div>
-        ))}
+      <div className="hk-5" style={{ marginBottom: 12 }}>
+        <KpiCard icon={CircleDollarSign} label="Receita paga" value={brl(k.c.receita)} delta={pctDelta(k.c.receita, k.p.receita)} progress={Math.max(k.c.receita, k.p.receita) ? k.c.receita / Math.max(k.c.receita, k.p.receita) : 0} loading={loading} hint={`${k.c.paid.length} vendas aprovadas`} />
+        <KpiCard icon={Clock} label="PIX pendente" value={brl(k.c.pix)} foot={`${k.c.pend.length} cobranças abertas`} progress={k.c.receita + k.c.pix ? k.c.pix / (k.c.receita + k.c.pix) : 0} loading={loading} />
+        <KpiCard icon={Ticket} label="Ticket médio" value={brl(k.c.ticket, 2)} delta={pctDelta(k.c.ticket, k.p.ticket)} progress={Math.max(k.c.ticket, k.p.ticket) ? k.c.ticket / Math.max(k.c.ticket, k.p.ticket) : 0} loading={loading} />
+        <KpiCard icon={Percent} label="Conversão de PIX" value={`${(k.c.conv * 100).toFixed(1).replace('.', ',')}%`} delta={pctDelta(k.c.conv, k.p.conv)} progress={k.c.conv} loading={loading} hint="Pagas ÷ (pagas + pendentes)" />
+        <KpiCard icon={RotateCcw} label="Reembolso / CB" value={brl(k.c.perdas)} delta={pctDelta(k.c.perdas, k.p.perdas)} invert progress={k.c.receita ? Math.min(1, k.c.perdas / k.c.receita) : 0} loading={loading} hint={`${k.c.loss.length} ocorrências`} />
       </div>
 
-      {!loading && (
-        <motion.div {...fadeUp(0.18)} style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : '1.15fr repeat(3, minmax(0, 0.75fr))',
-          gap: 12,
-        }}>
-          <div style={{
-            padding: 18,
-            borderRadius: 14,
-            background: 'linear-gradient(145deg, rgba(16,185,129,0.12), rgba(59,130,246,0.07) 58%, rgba(10,10,18,0.22))',
-            border: `1px solid ${T.border}`,
-            minHeight: 132,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}>
-            <div>
-              <p style={{ fontSize: 10, color: T.green, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 800, marginBottom: 10 }}>
-                Caixa em tempo real
-              </p>
-              <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: isMobile ? 19 : 22, lineHeight: 1.12, color: T.text, margin: 0, letterSpacing: '-0.02em' }}>
-                {receita > 0 ? `${toBRL(receita)} confirmados no filtro atual.` : 'Aguardando as primeiras vendas confirmadas.'}
-              </h2>
-              <p style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55, marginTop: 8, fontFamily: "'DM Sans', sans-serif" }}>
-                {pix > 0
-                  ? `${toBRL(pix)} ainda esta em PIX pendente.`
-                  : pendingCount > 0
-                    ? `${pendingCount} venda${pendingCount > 1 ? 's' : ''} pendente${pendingCount > 1 ? 's' : ''} para acompanhar.`
-                    : 'Quando o checkout enviar eventos, esta tela vira o lado financeiro do ROAS.'}
-              </p>
+      <div className="hk-row2" style={{ marginBottom: 12 }}>
+        <Panel>
+          <PanelHead title="Caixa por tempo" sub={period === 'hoje' ? 'Por hora' : `Últimos ${r.days} dias`} right={<SeriesLegend series={SERIES} hidden={hidden} onToggle={key => setHidden(h => ({ ...h, [key]: !h[key] }))} />} />
+          <div style={{ padding: '14px 10px 10px 0' }}><HawkBars data={chart} series={SERIES} hidden={hidden} height={290} empty="Sem vendas nesse período." /></div>
+        </Panel>
+        <Panel>
+          <div className="hk-geo" style={{ padding: '16px 18px', alignItems: 'start' }}>
+            <div style={{ minWidth: 0 }}>
+              <h2 className="tt-h">Receita por origem</h2>
+              <div className="tt-cap" style={{ marginTop: 3 }}>utm_source das vendas pagas</div>
+              <div style={{ marginTop: 10 }}>
+                {bySource.length === 0 && <Empty pad={30}>Sem vendas pagas.</Empty>}
+                {bySource.slice(0, 6).map(([name, v]) => <BarRow key={name} label={name} sub={`${v.n} venda${v.n === 1 ? '' : 's'}`} value={brl(v.v)} right={`${k.c.receita ? ((v.v / k.c.receita) * 100).toFixed(0) : 0}%`} ratio={v.v / (bySource[0]?.[1].v || 1)} />)}
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, color: T.green, padding: '3px 9px', borderRadius: 999, background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.22)', fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>{captureRate}% captura</span>
-              <span style={{ fontSize: 11, color: problemCount > 0 ? T.red : T.muted, padding: '3px 9px', borderRadius: 999, background: problemCount > 0 ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.035)', border: `1px solid ${T.border}`, fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>{problemCount} reversões</span>
+            <div style={{ minWidth: 0 }}>
+              <h2 className="tt-h">Por plataforma</h2>
+              <div className="tt-cap" style={{ marginTop: 3 }}>checkout de origem</div>
+              <div style={{ marginTop: 10 }}>
+                {byPlatform.length === 0 && <Empty pad={30}>—</Empty>}
+                {byPlatform.slice(0, 6).map(([name, v]) => <BarRow key={name} label={name} value={brl(v)} right={`${k.c.receita ? ((v / k.c.receita) * 100).toFixed(0) : 0}%`} ratio={v / (byPlatform[0]?.[1] || 1)} />)}
+              </div>
             </div>
           </div>
+        </Panel>
+      </div>
 
-          <RevenueSignal icon={Target} label="Ticket médio" value={ticketMedio > 0 ? toBRL(ticketMedio) : '—'} detail="média das vendas pagas no filtro" color={T.blue}/>
-          <RevenueSignal icon={Clock} label="PIX pendente" value={`${pendingCount}`} detail={pix > 0 ? `${toBRL(pix)} aguardando confirmação` : 'sem pendências no filtro'} color={T.amber}/>
-          <RevenueSignal icon={Radio} label="Origem forte" value={topSource ? topSource[0] : '—'} detail={topSource ? `${toBRL(topSource[1])} em receita paga` : 'sem origem de venda ainda'} color={T.cyan}/>
-        </motion.div>
-      )}
-
-      {/* Chart */}
-      <motion.div {...fadeUp(0.22)}>
-        <SpotlightCard style={{ ...cardStyle, borderRadius: 14 }}>
-          <div style={{ padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div>
-                <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: T.text, margin: 0 }}>Receita diária</h2>
-                <p style={{ fontSize: 12, color: T.muted, marginTop: 2, fontFamily: "'DM Sans', sans-serif" }}>Pago vs PIX gerado</p>
-              </div>
-              <div style={{ display: 'flex', gap: 16 }}>
-                {[{ color: T.green, label: 'Receita' }, { color: T.amber, label: 'PIX' }].map(l => (
-                  <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: T.muted, fontFamily: "'DM Sans', sans-serif" }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: l.color, boxShadow: `0 0 5px ${l.color}` }}/>
-                    {l.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-            {loading ? (
-              <div style={{ height: 160, borderRadius: 8, background: 'rgba(255,255,255,0.03)', animation: 'sk 1.4s ease-in-out infinite', backgroundSize: '200% 100%' }}/>
-            ) : !chartHasData ? (
-              <div style={{
-                height: 160,
-                borderRadius: 12,
-                border: `1px dashed ${T.border}`,
-                background: 'linear-gradient(180deg, rgba(16,185,129,0.06), rgba(10,10,18,0.02))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                textAlign: 'center',
-                padding: 18,
-              }}>
-                <div>
-                  <p style={{ fontSize: 13, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, marginBottom: 6 }}>Sem receita neste período</p>
-                  <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.45, maxWidth: 420, fontFamily: "'DM Sans', sans-serif" }}>
-                    Assim que o webhook do checkout enviar vendas pagas ou PIX gerados, o gráfico mostra a curva diária.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }} barCategoryGap="30%">
-                  <defs>
-                    <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={T.green} stopOpacity={0.9}/>
-                      <stop offset="100%" stopColor={T.green} stopOpacity={0.5}/>
-                    </linearGradient>
-                    <linearGradient id="gP" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={T.amber} stopOpacity={0.9}/>
-                      <stop offset="100%" stopColor={T.amber} stopOpacity={0.5}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
-                  <XAxis dataKey="dia" tick={{ fontSize: 10, fill: T.muted }} axisLine={false} tickLine={false}/>
-                  <YAxis tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} tick={{ fontSize: 10, fill: T.muted }} axisLine={false} tickLine={false}/>
-                  <RTooltip content={<ChartTip/>} cursor={{ fill: 'rgba(59,130,246,0.05)' }}/>
-                  <Bar dataKey="receita" fill="url(#gR)" radius={[4,4,0,0]} maxBarSize={28}/>
-                  <Bar dataKey="pix"     fill="url(#gP)" radius={[4,4,0,0]} maxBarSize={28}/>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+      <Panel>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, padding: '6px 18px 0', flexWrap: 'wrap' }}>
+          <div className="tt-tabbar no-scrollbar" style={{ borderBottom: 0 }}>
+            {['todos', 'paid', 'pending', 'refunded', 'chargeback'].map(s => (
+              <button key={s} className="tt-tab" data-active={status === s} onClick={() => setStatus(s)}>
+                {s === 'todos' ? 'Todas' : STATUS[s].label}
+                <span className="tt-chip" style={{ height: 18, padding: '0 6px' }}>{counts[s] || 0}</span>
+              </button>
+            ))}
           </div>
-        </SpotlightCard>
-      </motion.div>
-
-      {/* Tabela */}
-      <motion.div {...fadeUp(0.3)}>
-        <SpotlightCard style={{ ...cardStyle, borderRadius: 14, overflow: 'hidden' }}>
-          {/* Filtros */}
-          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-            {/* Search */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 160, padding: '7px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.border}` }}>
-              <Search size={13} style={{ color: T.muted, flexShrink: 0 }}/>
-              <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
-                placeholder="Buscar cliente, produto, campanha..."
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: T.text, fontFamily: "'DM Sans', sans-serif", minWidth: 0 }}/>
-              {search && <button onClick={() => setSearch('')} style={{ color: T.muted, background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}><X size={13}/></button>}
-            </div>
-
-            {/* Status */}
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['todos', 'paid', 'pending', 'refunded'] as StatusFilter[]).map(s => {
-                const cfg = STATUS[s] || { color: T.muted, bg: 'rgba(255,255,255,0.04)' }
-                const active = statusFilter === s
-                return (
-                  <button key={s} onClick={() => { setStatusFilter(s); setPage(1) }}
-                    style={{ height: 30, padding: '0 12px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', fontFamily: "'DM Sans', sans-serif", background: active ? (s === 'todos' ? 'rgba(59,130,246,0.12)' : cfg.bg) : 'rgba(255,255,255,0.02)', color: active ? (s === 'todos' ? '#60a5fa' : cfg.color) : T.muted, border: `1px solid ${active ? (s === 'todos' ? 'rgba(59,130,246,0.3)' : `${cfg.color}30`) : T.border}` }}>
-                    {s === 'todos' ? 'Todos' : s === 'paid' ? '✓ Pago' : s === 'pending' ? '◷ PIX' : '↩ Reembolso'}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Plataforma */}
-            <select value={platformFilter} onChange={e => { setPlatformFilter(e.target.value); setPage(1) }}
-              style={{ height: 30, padding: '0 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", background: platformFilter === 'todas' ? 'rgba(255,255,255,0.025)' : 'rgba(34,211,238,0.10)', color: platformFilter === 'todas' ? T.muted : T.cyan, border: `1px solid ${platformFilter === 'todas' ? T.border : 'rgba(34,211,238,0.28)'}`, outline: 'none' }}>
-              <option value="todas">Todas plataformas</option>
-              {platforms.map(p => <option key={p} value={p}>{niceLabel(p)}</option>)}
-            </select>
-
-            <span style={{ fontSize: 11, color: T.muted, marginLeft: 'auto', fontFamily: "'DM Sans', sans-serif" }}>{filtered.length} registros</span>
+        </div>
+        <div style={{ height: 1, background: H.line }} />
+        <div style={{ display: 'flex', gap: 8, padding: '12px 18px', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '0 1 340px', minWidth: 220 }}>
+            <Search size={13} style={{ position: 'absolute', left: 11, top: 12, color: H.muted }} />
+            <input className="tt-input" style={{ paddingLeft: 32 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cliente, produto, UTM ou plataforma..." />
           </div>
-
-          {/* Rows */}
-          {loading ? (
-            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[1,2,3,4,5].map(i => <div key={i} style={{ height: 52, borderRadius: 8, background: 'rgba(255,255,255,0.03)', animation: 'sk 1.4s ease-in-out infinite', backgroundSize: '200% 100%' }}/>)}
-            </div>
-          ) : paginated.length === 0 ? (
-            <div style={{ padding: '52px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 50, height: 50, borderRadius: 15, background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {search ? <Search size={22} style={{ color: T.blue }}/> : <ShoppingCart size={22} style={{ color: T.blue }}/>}
-              </div>
-              <div>
-                <p style={{ fontSize: 17, color: T.text, fontFamily: "'Syne', sans-serif", fontWeight: 800, marginBottom: 6 }}>
-                  {search || statusFilter !== 'todos' || platformFilter !== 'todas' ? 'Nada encontrado nesse filtro' : 'Nenhuma venda recebida ainda'}
-                </p>
-                <p style={{ fontSize: 13, color: T.muted, lineHeight: 1.5, maxWidth: 440, fontFamily: "'DM Sans', sans-serif" }}>
-                  {search || statusFilter !== 'todos' || platformFilter !== 'todas'
-                    ? 'Limpe a busca ou troque o status para voltar à lista completa.'
-                    : 'Conecte o webhook do checkout para o TioTrack receber vendas, PIX pendente, reembolso e UTMs automaticamente.'}
-                </p>
-              </div>
-              {(search || statusFilter !== 'todos' || platformFilter !== 'todas') ? (
-                <button onClick={() => { setSearch(''); setStatusFilter('todos'); setPlatformFilter('todas'); setPage(1) }}
-                  style={{ height: 34, padding: '0 14px', borderRadius: 9, background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                  Limpar filtros <X size={12}/>
-                </button>
-              ) : (
-                <button onClick={() => { window.location.href = '/integracoes' }}
-                  style={{ height: 34, padding: '0 14px', borderRadius: 9, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: T.green, display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                  Ver integrações <ArrowRight size={12}/>
-                </button>
-              )}
-            </div>
-          ) : paginated.map((c, i) => {
-            const st = STATUS[c.status] || STATUS.cancelled
-            const src = decodeUtm(c.utm_source)
-            const camp = decodeUtm(c.utm_campaign)
-            const isPaid = c.status === 'paid'
-
-            return (
-              <motion.div key={c.id}
-                initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.22, delay: i * 0.03 }}
-                style={{ borderBottom: i < paginated.length - 1 ? `1px solid ${T.border}` : 'none', overflow: 'hidden' }}>
-                {/* Main row */}
-                <div
-                  onClick={() => setExpanded(expanded === c.id ? null : c.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', transition: 'background 0.12s', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  {/* Icon */}
-                  <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${st.color}12`, border: `1px solid ${st.color}20` }}>
-                    {isPaid ? <CheckCircle size={14} style={{ color: st.color }}/> : c.status === 'pending' ? <Clock size={14} style={{ color: st.color }}/> : <RotateCcw size={14} style={{ color: st.color }}/>}
-                  </div>
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: T.text, fontFamily: "'DM Sans', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {c.customer_name || 'Cliente'}
-                      </span>
-                      {src && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.05)', color: T.muted, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{src.toUpperCase()}</span>}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      <span style={{ fontSize: 11, color: T.muted, fontFamily: "'DM Sans', sans-serif" }}>{timeAgo(c.created_at)}</span>
-                      {c.produto && <span style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>· {c.produto}</span>}
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, fontWeight: 600, background: st.bg, color: st.color, border: `1px solid ${st.color}25`, fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{st.label}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: st.color, fontFamily: "'Syne', sans-serif", flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{toBRL(c.valor ?? 0)}</span>
-                  <span style={{ fontSize: 11, color: expanded === c.id ? T.blue : T.muted, flexShrink: 0, transition: 'color 0.15s' }}>{expanded === c.id ? '▲' : '▼'}</span>
-                </div>
-                {/* Expand panel */}
-                {expanded === c.id && (
-                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
-                    style={{ background: 'rgba(59,130,246,0.03)', borderTop: `1px solid ${T.border}`, padding: '12px 16px 14px 64px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px 24px' }}>
-                      {[
-                        { l: 'Campanha',     v: decodeUtm(c.utm_campaign) },
-                        { l: 'Conjunto',     v: decodeUtm((c as any).utm_content) },
-                        { l: 'Ad / Criativo',v: decodeUtm((c as any).utm_term) },
-                        { l: 'Source',       v: decodeUtm((c as any).utm_source) },
-                        { l: 'Medium',       v: decodeUtm((c as any).utm_medium) },
-                        { l: 'Pagamento',    v: (c as any).payment_method },
-                        { l: 'Plataforma',   v: (c as any).payment_platform },
-                        { l: 'Produto',      v: (c as any).produto },
-                        { l: 'Data',         v: fmtTime(c.created_at) },
-                      ].filter(x => x.v).map(({ l, v }) => (
-                        <div key={l}>
-                          <p style={{ fontSize: 9, color: T.muted, fontFamily: "'Syne', sans-serif", letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>{l}</p>
-                          <p style={{ fontSize: 12, color: T.sub, fontFamily: "'DM Sans', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            )
-          })}
-
-          {/* Paginação */}
-          {totalPages > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderTop: `1px solid ${T.border}` }}>
-              <span style={{ fontSize: 12, color: T.muted, fontFamily: "'DM Sans', sans-serif" }}>Página {page} de {totalPages}</span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                  disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-                  style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: page <= 1 ? T.muted : T.sub, cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>
-                  <ChevronLeft size={13}/>
-                </motion.button>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                  disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
-                  style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: page >= totalPages ? T.muted : T.sub, cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.4 : 1 }}>
-                  <ChevronRight size={13}/>
-                </motion.button>
-              </div>
-            </div>
-          )}
-        </SpotlightCard>
-      </motion.div>
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg) } }
-        @keyframes sk   { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-        @media (max-width: 640px) {
-          .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
-        }
-      `}</style>
+          <select className="tt-select" style={{ width: 200 }} value={platform} onChange={e => setPlatform(e.target.value)}>
+            <option value="todas">Todas as plataformas</option>
+            {platforms.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <div className="tt-cap" style={{ marginLeft: 'auto', alignSelf: 'center' }}>{num(filtered.length)} registros · {brl(filtered.filter(c => c.status === 'paid').reduce((s, c) => s + c.valor, 0))} pagos</div>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tt-table" style={{ minWidth: 960 }}>
+            <thead><tr>{['Data', 'Cliente / Produto', 'Valor', 'Status', 'Origem', 'Campanha', 'Pagamento'].map(h => <th key={h} style={{ textAlign: h === 'Valor' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {filtered.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE).map(c => (
+                <tr key={c.id}>
+                  <td className="tt-mono" style={{ color: H.muted, fontSize: 11.5, whiteSpace: 'nowrap' }}>{fmtTime(c.created_at)}</td>
+                  <td><div style={{ color: H.text, fontWeight: 600 }}>{c.customer_name || 'Cliente'}</div><div style={{ color: H.muted, fontSize: 11, marginTop: 3 }}>{c.produto || 'Produto não informado'}</div></td>
+                  <td style={{ textAlign: 'right', color: H.text, fontWeight: 700 }}>{brl(c.valor, 2)}</td>
+                  <td><StatusPill tone={STATUS[c.status]?.tone || 'neutral'}>{STATUS[c.status]?.label || c.status}</StatusPill></td>
+                  <td>{decode(c.utm_source) ? <span className="tt-chip">{decode(c.utm_source)}</span> : <span style={{ color: H.muted }}>—</span>}</td>
+                  <td style={{ color: H.sub, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{decode(c.utm_campaign) || '—'}</td>
+                  <td style={{ color: H.sub }}>{[c.payment_platform, c.payment_method].filter(Boolean).join(' · ') || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!loading && filtered.length === 0 && <Empty pad={40}>Nenhuma venda encontrada.</Empty>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px' }}>
+          <span className="tt-cap">{filtered.length ? `${page * PER_PAGE + 1}–${Math.min(filtered.length, (page + 1) * PER_PAGE)} de ${num(filtered.length)}` : ''}</span>
+          <Pager page={page} pages={pages} onChange={setPage} />
+        </div>
+      </Panel>
     </div>
   )
 }

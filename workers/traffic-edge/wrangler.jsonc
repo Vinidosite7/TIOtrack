@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tiotrack-traffic-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+
+  "kv_namespaces": [
+    {
+      "binding": "TRAFFIC_RULES",
+      "id": "31bc2e47c91a469d9883c35b9852bf53"
+    }
+  ],
+
+  "vars": {
+    "RULE_CACHE_TTL_SECONDS": "30"
+  }
+}

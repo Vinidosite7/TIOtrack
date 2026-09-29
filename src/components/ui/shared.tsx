@@ -9,7 +9,7 @@ export function GridBg() {
       <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, opacity: 0.025 }}>
         <defs>
           <pattern id="grid-shared" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#3b82f6" strokeWidth="0.5" />
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#a3a7f2" strokeWidth="0.5" />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#grid-shared)" />
@@ -17,7 +17,7 @@ export function GridBg() {
       <div style={{
         position: 'absolute', top: '20%', left: '50%',
         width: 800, height: 500,
-        background: 'radial-gradient(ellipse, rgba(59,130,246,0.04) 0%, transparent 70%)',
+        background: 'radial-gradient(ellipse, rgba(163,167,242,0.04) 0%, transparent 70%)',
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'none',
       }} />
@@ -42,7 +42,7 @@ export function PageHeader({
       <div>
         <h1 style={{
           fontSize: 22, fontWeight: 800,
-          fontFamily: "'Syne', sans-serif",
+          fontFamily: "var(--font-inter, Inter), Inter, sans-serif",
           color: '#f0f0ff', letterSpacing: '-0.03em',
           lineHeight: 1.15, margin: 0,
         }}>
@@ -51,7 +51,7 @@ export function PageHeader({
         {subtitle && (
           <p style={{
             fontSize: 12, color: T.text2,
-            fontFamily: "'DM Sans', sans-serif",
+            fontFamily: "var(--font-inter, Inter), Inter, sans-serif",
             marginTop: 3,
           }}>
             {subtitle}
@@ -74,7 +74,7 @@ export function Topbar({ title, children }: { title: string; children?: React.Re
     }}>
       <span style={{
         fontSize: 13, fontWeight: 700,
-        fontFamily: "'Syne', sans-serif",
+        fontFamily: "var(--font-inter, Inter), Inter, sans-serif",
         color: T.text1, letterSpacing: '-0.02em',
       }}>
         {title}
@@ -102,7 +102,7 @@ export function Pill({ label, active, onClick, color }: {
         border: `1px solid ${active ? `${c}40` : T.border}`,
         color: active ? c : T.text2,
         fontSize: 11, cursor: 'pointer',
-        fontFamily: "'DM Sans', sans-serif",
+        fontFamily: "var(--font-inter, Inter), Inter, sans-serif",
         fontWeight: active ? 600 : 400,
         transition: 'all 150ms ease',
       }}
@@ -185,7 +185,7 @@ export function CardHeader({ title, badge, action }: {
     }}>
       <span style={{
         fontSize: 10, color: T.text3, fontWeight: 700,
-        fontFamily: "'DM Sans', sans-serif",
+        fontFamily: "var(--font-inter, Inter), Inter, sans-serif",
         textTransform: 'uppercase', letterSpacing: '0.08em',
       }}>
         {title}
@@ -227,14 +227,14 @@ export function EmptyState({ icon: Icon, title, sub }: {
       </div>
       <p style={{
         fontSize: 14, color: T.text2, marginBottom: 6,
-        fontFamily: "'DM Sans', sans-serif", fontWeight: 500,
+        fontFamily: "var(--font-inter, Inter), Inter, sans-serif", fontWeight: 500,
       }}>
         {title}
       </p>
       {sub && (
         <p style={{
           fontSize: 12, color: T.text3, lineHeight: 1.7,
-          fontFamily: "'DM Sans', sans-serif", maxWidth: 320, margin: '0 auto',
+          fontFamily: "var(--font-inter, Inter), Inter, sans-serif", maxWidth: 320, margin: '0 auto',
         }}>
           {sub}
         </p>

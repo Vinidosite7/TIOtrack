@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createHmac } from 'crypto'
+import { sendWorkspacePush } from '@/lib/push'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,8 +32,8 @@ export async function POST(req: NextRequest) {
         req.headers.get('x-webhook-signature') ??
         req.headers.get('x-signature') ??
         req.headers.get('x-sharkbot-signature')
-      if (signature && !validateSignature(rawBody, signature, secret)) {
-        return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 })
+      if (!signature || !validateSignature(rawBody, signature, secret)) {
+        return NextResponse.json({ error: 'Assinatura ausente ou inválida' }, { status: 401 })
       }
     }
 
@@ -88,6 +89,11 @@ export async function POST(req: NextRequest) {
         utm_content:      venda.utm_content,
         utm_term:         venda.utm_term,
         utm_id:           venda.utm_id,
+        session_id:       venda.session_id,
+        click_id:         venda.click_id,
+        ttclid:           venda.ttclid,
+        fbclid:           venda.fbclid,
+        gclid:            venda.gclid,
         customer_name:    venda.customer_name,
         customer_phone:   venda.customer_phone,
         payment_platform: venda.payment_platform,
@@ -100,20 +106,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    if (venda.status === 'paid') {
+      if (venda.session_id) {
+        await supabaseAdmin.from('sessions').update({ converteu: true }).eq('workspace_id', workspace_id).eq('session_id', venda.session_id)
+      } else if (venda.click_id) {
+        await supabaseAdmin.from('sessions').update({ converteu: true }).eq('workspace_id', workspace_id).eq('click_id', venda.click_id)
+      }
+    }
+
     await updateDailySummary(workspace_id, venda.dia)
 
-    // Envia push notification se venda foi aprovada
+    // Envia push sem expor um endpoint interno sem autenticação.
     if (venda.status === 'paid') {
-      fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/push`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace_id,
-          title: '💰 Nova venda aprovada!',
-          body: `${venda.customer_name ?? 'Cliente'} — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(venda.valor)}`,
-          url: '/vendas',
-        }),
-      }).catch(() => {}) // Silencioso — não bloqueia o webhook
+      sendWorkspacePush(workspace_id, {
+        title: '💰 Nova venda aprovada!',
+        body: `${venda.customer_name ?? 'Cliente'} — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(venda.valor)}`,
+        url: '/vendas',
+      }).catch(() => {})
     }
 
     return NextResponse.json({ ok: true, id: venda.external_id, status: venda.status })
@@ -165,6 +174,11 @@ function normalizePayload(body: any) {
       utm_content:      trk.utm_content ?? null,
       utm_term:         trk.utm_term ?? null,
       utm_id:           trk.utm_id ?? null,
+      session_id:       trk.session_id ?? null,
+      click_id:         trk.tio_click_id ?? trk.click_id ?? trk.sck ?? trk.xcod ?? null,
+      ttclid:           trk.ttclid ?? null,
+      fbclid:           trk.fbclid ?? null,
+      gclid:            trk.gclid ?? null,
       customer_name:    cus.first_name ? `${cus.first_name} ${cus.last_name ?? ''}`.trim() : null,
       customer_phone:   cus.phone ?? cus.telefone ?? null,
       payment_platform: tx.gateway ?? 'sharkbot',
@@ -184,6 +198,8 @@ function normalizePayload(body: any) {
       utm_source: body.utm_source ?? null, utm_medium: body.utm_medium ?? null,
       utm_campaign: body.utm_campaign ?? null, utm_content: body.utm_content ?? null,
       utm_term: body.utm_term ?? null, utm_id: body.utm_id ?? null,
+      session_id: body.session_id ?? null, click_id: body.tio_click_id ?? body.click_id ?? body.sck ?? body.xcod ?? null,
+      ttclid: body.ttclid ?? null, fbclid: body.fbclid ?? null, gclid: body.gclid ?? null,
       customer_name: body.customer_name ?? body.name ?? null,
       customer_phone: body.customer_phone ?? body.phone ?? null,
       payment_platform: 'sharkbot', payment_method: body.payment_method ?? 'pix', dia,
@@ -198,6 +214,8 @@ function normalizePayload(body: any) {
       utm_source: body.utm_source ?? null, utm_medium: body.utm_medium ?? null,
       utm_campaign: body.utm_campaign ?? null, utm_content: body.utm_content ?? null,
       utm_term: body.utm_term ?? null, utm_id: body.utm_id ?? null,
+      session_id: body.session_id ?? null, click_id: body.tio_click_id ?? body.click_id ?? body.sck ?? body.xcod ?? null,
+      ttclid: body.ttclid ?? null, fbclid: body.fbclid ?? null, gclid: body.gclid ?? null,
       customer_name: body.customer_name ?? null, customer_phone: body.customer_phone ?? null,
       payment_platform: body.platform ?? 'manual', payment_method: body.method ?? 'pix',
       dia: body.dia ?? new Date().toISOString().split('T')[0],

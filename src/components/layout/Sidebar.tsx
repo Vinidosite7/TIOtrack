@@ -1,291 +1,215 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { createContext, useContext, useState } from 'react'
 import {
-  LayoutDashboard, TrendingUp, ShoppingCart, Link2,
-  FileText, Plug, Settings, LogOut,
+  LayoutDashboard, TrendingUp, ShoppingCart, Link2, FileText, Package, Cloud, Globe2,
+  Plug, Settings, ShieldCheck, RadioTower, BarChart3, ChevronRight,
+  LogOut, Sparkles,
 } from 'lucide-react'
-import { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/store/workspace'
-import { useRouter } from 'next/navigation'
+import { T } from '@/lib/tokens'
 
-const W_COLLAPSED = 60
-const W_EXPANDED  = 228
-
-const S = {
-  bg:           '#0e1520',
-  border:       'rgba(148,163,184,0.08)',
-  borderActive: 'rgba(59,130,246,0.25)',
-  blue:         '#3b82f6',
-  blueLight:    '#60a5fa',
-  blueDim:      'rgba(59,130,246,0.10)',
-  text:         '#e2e8f0',
-  textSub:      '#94a3b8',
-  textMuted:    '#475569',
-}
-
-export const SidebarContext = createContext<{ collapsed: boolean; setCollapsed: (v: boolean) => void }>({ collapsed: true, setCollapsed: () => {} })
+export const SidebarContext = createContext<{ collapsed: boolean; setCollapsed: (v: boolean) => void }>({ collapsed: false, setCollapsed: () => {} })
 export function useSidebar() { return useContext(SidebarContext) }
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = useState(true)
+  const [collapsed, setCollapsed] = useState(false)
   return <SidebarContext.Provider value={{ collapsed, setCollapsed }}>{children}</SidebarContext.Provider>
 }
 
-const navMain = [
-  { label: 'Visão geral', href: '/overview',      icon: LayoutDashboard, color: S.blueLight },
-  { label: 'Campanhas',   href: '/campanhas',     icon: TrendingUp,      color: '#34d399' },
-  { label: 'Vendas',      href: '/vendas',        icon: ShoppingCart,    color: '#22d3ee' },
-  { label: 'UTMs',        href: '/utms',          icon: Link2,           color: '#a78bfa' },
-  { label: 'Relatórios',  href: '/relatorios',    icon: FileText,        color: '#fbbf24' },
-]
-const navSystem = [
-  { label: 'Integrações',   href: '/integracoes',   icon: Plug,     color: '#60a5fa' },
-  { label: 'Configurações', href: '/configuracoes', icon: Settings, color: '#94a3b8' },
+type NavItemType = { label: string; href: string; icon: any; color: string; badge?: string }
+
+const groups: { title: string; items: NavItemType[] }[] = [
+  {
+    title: 'Operação',
+    items: [
+      { label: 'Overview', href: '/overview', icon: LayoutDashboard, color: T.accent },
+      { label: 'Campanhas', href: '/campanhas', icon: TrendingUp, color: T.green },
+      { label: 'Vendas', href: '/vendas', icon: ShoppingCart, color: T.cyan },
+      { label: 'Produtos', href: '/produtos', icon: Package, color: T.accentLight },
+      { label: 'Funil & UTMs', href: '/utms', icon: Link2, color: T.purple },
+      { label: 'Relatórios', href: '/relatorios', icon: FileText, color: T.yellow },
+    ],
+  },
+  {
+    title: 'Infra',
+    items: [
+      { label: 'Pages', href: '/pages', icon: Cloud, color: T.accentLight },
+      { label: 'Domínios', href: '/domains', icon: Globe2, color: T.green },
+    ],
+  },
+  {
+    title: 'Central',
+    items: [
+      { label: 'Traffic Center', href: '/traffic', icon: ShieldCheck, color: T.green, badge: 'LIVE' },
+      { label: 'Signal Center', href: '/signal', icon: RadioTower, color: T.purple, badge: 'MVP' },
+      { label: 'Integrações', href: '/integracoes', icon: Plug, color: T.accentLight },
+    ],
+  },
+  {
+    title: 'Sistema',
+    items: [
+      { label: 'Configurações', href: '/configuracoes', icon: Settings, color: '#94a3b8' },
+    ],
+  },
 ]
 
-function NavItem({ href, icon: Icon, label, color, active, collapsed, onClick }: {
-  href: string; icon: any; label: string; color: string
-  active: boolean; collapsed: boolean; onClick?: () => void
-}) {
-  const [hov, setHov] = useState(false)
+function NavItem({ item, active }: { item: NavItemType; active: boolean }) {
+  const Icon = item.icon
   return (
-    <Link href={href} onClick={onClick} title={collapsed ? label : undefined} aria-label={label}
-      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+    <Link
+      href={item.href}
       style={{
-        position: 'relative', display: 'flex', alignItems: 'center',
-        height: 40, borderRadius: 10, padding: '0 10px', gap: 10,
-        overflow: 'hidden', whiteSpace: 'nowrap',
-        background: active ? `${color}15` : hov ? 'rgba(255,255,255,0.035)' : 'transparent',
-        border: active ? `1px solid ${color}20` : '1px solid transparent',
-        color: active ? color : hov ? S.text : S.textSub,
-        transition: 'all 0.15s ease', textDecoration: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 46,
+        padding: '0 12px',
+        borderRadius: 14,
+        color: active ? '#eceefb' : '#9ea3c2',
+        background: active ? 'linear-gradient(180deg, rgba(163,167,242,.18) 0%, rgba(163,167,242,.10) 100%)' : 'transparent',
+        border: `1px solid ${active ? 'rgba(163,167,242,.28)' : 'transparent'}`,
+        boxShadow: active ? '0 10px 24px rgba(163,167,242,.12)' : 'none',
+        transition: 'all .18s ease',
+      }}
+    >
+      <div style={{
+        width: 32,
+        height: 32,
+        display: 'grid',
+        placeItems: 'center',
+        borderRadius: 10,
+        background: active ? `${item.color}20` : 'rgba(255,255,255,.04)',
+        border: `1px solid ${active ? `${item.color}33` : 'rgba(148,163,184,.08)'}`,
+        flexShrink: 0,
       }}>
-      {/* Barra ativa */}
-      <AnimatePresence>
-        {active && (
-          <motion.div layoutId="nav-active-bar"
-            initial={{ opacity: 0, scaleY: 0 }} animate={{ opacity: 1, scaleY: 1 }} exit={{ opacity: 0, scaleY: 0 }}
-            transition={{ duration: 0.2 }}
-            style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: 99, background: color }}
-          />
-        )}
-      </AnimatePresence>
-      {/* Ícone */}
-      <div style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', zIndex: 1 }}>
-        <Icon size={16} strokeWidth={active ? 2.2 : 1.8}/>
+        <Icon size={16} color={active ? item.color : '#666c8e'} />
       </div>
-      <AnimatePresence>
-        {collapsed && hov && (
-          <motion.div
-            initial={{ opacity: 0, x: -4 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -4 }}
-            transition={{ duration: 0.14 }}
-            style={{
-              position: 'fixed',
-              left: W_COLLAPSED + 8,
-              padding: '7px 10px',
-              borderRadius: 8,
-              background: 'rgba(15,22,35,0.98)',
-              border: `1px solid ${S.border}`,
-              boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
-              color: S.text,
-              fontSize: 12,
-              fontWeight: 600,
-              fontFamily: "'DM Sans', sans-serif",
-              pointerEvents: 'none',
-              zIndex: 80,
-            }}>
-            {label}
-          </motion.div>
-        )}
-      </AnimatePresence>
-      {/* Label */}
-      <motion.span
-        animate={{ opacity: collapsed ? 0 : 1, x: collapsed ? -8 : 0 }}
-        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-        style={{ fontSize: 13.5, fontWeight: active ? 600 : 500, fontFamily: "'DM Sans', sans-serif", letterSpacing: '-0.01em', overflow: 'hidden', flex: 1, position: 'relative', zIndex: 1, pointerEvents: 'none' }}>
-        {label}
-      </motion.span>
-      {/* Ponto ativo */}
-      <AnimatePresence>
-        {active && !collapsed && (
-          <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
-            style={{ width: 5, height: 5, borderRadius: '50%', background: color, flexShrink: 0, position: 'relative', zIndex: 1 }}
-          />
-        )}
-      </AnimatePresence>
-    </Link>
-  )
-}
 
-function Sep() {
-  return <div style={{ height: 1, margin: '6px 8px', background: 'rgba(148,163,184,0.08)' }}/>
-}
-
-function SectionLabel({ label, collapsed }: { label: string; collapsed: boolean }) {
-  return (
-    <motion.div animate={{ opacity: collapsed ? 0 : 1, height: collapsed ? 0 : 'auto' }} transition={{ duration: 0.2 }} style={{ overflow: 'hidden' }}>
-      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: S.textMuted, padding: '6px 10px 3px', fontFamily: "'Syne', sans-serif" }}>
-        {label}
-      </p>
-    </motion.div>
-  )
-}
-
-function MetaRing({ collapsed }: { collapsed: boolean }) {
-  const { active: workspace } = useWorkspaceStore()
-  const [pct, setPct] = useState(0)
-  const [revenue, setRevenue] = useState(0)
-  const [target, setTarget] = useState(0)
-  const [hov, setHov] = useState(false)
-  const color = pct >= 100 ? '#34d399' : pct >= 60 ? '#fbbf24' : '#f87171'
-  const circ = 2 * Math.PI * 10
-
-  useEffect(() => {
-    if (!workspace?.id) return
-    async function load() {
-      try {
-        const now = new Date()
-        const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-        const today = now.toISOString().split('T')[0]
-        const [vRes, pRes] = await Promise.all([
-          supabase.from('conversions').select('valor').eq('workspace_id', workspace!.id).eq('status', 'paid').gte('dia', start).lte('dia', today),
-          supabase.from('user_prefs').select('meta_mensal_brl').eq('workspace_id', workspace!.id).single(),
-        ])
-        const rev = (vRes.data || []).reduce((s: number, r: any) => s + Number(r.valor), 0)
-        const tgt = pRes.data?.meta_mensal_brl || 0
-        setRevenue(rev); setTarget(tgt)
-        setPct(tgt > 0 ? Math.min((rev / tgt) * 100, 100) : 0)
-      } catch {}
-    }
-    load()
-  }, [workspace?.id])
-
-  function fmt(n: number) {
-    if (n >= 1000000) return `R$${(n/1000000).toFixed(1)}M`
-    if (n >= 1000) return `R$${(n/1000).toFixed(0)}K`
-    return `R$${n.toFixed(0)}`
-  }
-
-  return (
-    <Link href="/configuracoes" onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ display: 'flex', alignItems: 'center', height: 44, borderRadius: 10, padding: '0 10px', gap: 10, overflow: 'hidden', textDecoration: 'none', background: hov ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${S.border}`, transition: 'background 0.15s', whiteSpace: 'nowrap' }}>
-      <div style={{ flexShrink: 0, position: 'relative', width: 26, height: 26 }}>
-        <svg width={26} height={26} viewBox="0 0 26 26" style={{ transform: 'rotate(-90deg)' }}>
-          <circle cx={13} cy={13} r={10} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={2.5}/>
-          <motion.circle cx={13} cy={13} r={10} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round"
-            strokeDasharray={circ} initial={{ strokeDashoffset: circ }}
-            animate={{ strokeDashoffset: circ - (circ * pct) / 100 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-          />
-        </svg>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: 7, fontWeight: 700, color, fontFamily: "'Syne', sans-serif" }}>{Math.round(pct)}%</span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+          {item.badge && (
+            <span style={{
+              fontSize: 9,
+              lineHeight: 1,
+              padding: '4px 6px',
+              borderRadius: 999,
+              border: '1px solid rgba(148,163,184,.12)',
+              color: active ? '#dcdefd' : '#8ea0bb',
+              background: active ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.03)',
+            }}>{item.badge}</span>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: active ? '#9ea3c2' : '#666c8e', marginTop: 1 }}>
+          {item.href === '/traffic' ? 'tráfego · regras · segurança' : item.href === '/signal' ? 'eventos · qualidade · retry' : 'dados e operação'}
         </div>
       </div>
-      <motion.div animate={{ opacity: collapsed ? 0 : 1, x: collapsed ? -8 : 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
-        <p style={{ fontSize: 12, fontWeight: 600, color: S.text, fontFamily: "'Syne', sans-serif" }}>Meta do mês</p>
-        {target > 0 && <p style={{ fontSize: 10, color: S.textMuted, marginTop: 1, fontFamily: "'DM Sans', sans-serif" }}>{fmt(revenue)} / {fmt(target)}</p>}
-      </motion.div>
+
+      <ChevronRight size={14} color={active ? '#dcdefd' : '#666c8e'} />
     </Link>
-  )
-}
-
-function LogoutButton({ collapsed }: { collapsed: boolean }) {
-  const router = useRouter()
-  const [hov, setHov] = useState(false)
-  return (
-    <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
-      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ display: 'flex', alignItems: 'center', height: 40, width: '100%', cursor: 'pointer', gap: 10, padding: '0 10px', borderRadius: 10, color: hov ? '#f87171' : S.textMuted, background: hov ? 'rgba(248,113,113,0.08)' : 'transparent', border: hov ? '1px solid rgba(248,113,113,0.15)' : '1px solid transparent', transition: 'all 0.15s', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-      <div style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <LogOut size={16} strokeWidth={1.8}/>
-      </div>
-      <motion.span animate={{ opacity: collapsed ? 0 : 1, x: collapsed ? -8 : 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-        style={{ fontSize: 13.5, fontWeight: 500, fontFamily: "'DM Sans', sans-serif", overflow: 'hidden' }}>
-        Sair
-      </motion.span>
-    </button>
-  )
-}
-
-function LogoMark({ glowing }: { glowing?: boolean }) {
-  return (
-    <div style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, background: 'rgba(7,10,18,0.75)', border: `1px solid ${glowing ? 'rgba(56,189,248,0.35)' : 'rgba(96,165,250,0.18)'}`, boxShadow: glowing ? '0 8px 24px rgba(56,189,248,0.18)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      <img src="/icon-192.png" alt="TioTrack" width={34} height={34} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-    </div>
   )
 }
 
 export function SidebarDesktop() {
-  const { collapsed, setCollapsed } = useSidebar()
   const pathname = usePathname()
-  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const router = useRouter()
+  const { active } = useWorkspaceStore()
 
-  const handleEnter = useCallback(() => {
-    if (leaveTimer.current) clearTimeout(leaveTimer.current)
-    setCollapsed(false)
-  }, [setCollapsed])
-
-  const handleLeave = useCallback(() => {
-    leaveTimer.current = setTimeout(() => setCollapsed(true), 150)
-  }, [setCollapsed])
-
-  useEffect(() => () => { if (leaveTimer.current) clearTimeout(leaveTimer.current) }, [])
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
   return (
-    <motion.aside
-      animate={{ width: collapsed ? W_COLLAPSED : W_EXPANDED }}
-      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
+    <aside
       style={{
-        position: 'relative', display: 'flex', flexDirection: 'column',
-        height: '100vh', flexShrink: 0,
-        background: S.bg,
-        borderRight: `1px solid ${S.border}`,
-        zIndex: 30, overflow: 'hidden',
-      }}>
-      {/* Linha gradiente abaixo do logo */}
-      <div aria-hidden style={{ position: 'absolute', top: 55, left: 0, right: 0, height: 1, background: 'rgba(148,163,184,0.08)', zIndex: 1, pointerEvents: 'none' }}/>
-
-      {/* Logo */}
-      <div style={{ height: 56, display: 'flex', alignItems: 'center', flexShrink: 0, padding: '0 13px', overflow: 'hidden', gap: 10, position: 'relative' }}>
-        <LogoMark glowing={!collapsed}/>
-        <motion.div animate={{ opacity: collapsed ? 0 : 1, x: collapsed ? -10 : 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} style={{ overflow: 'hidden', flexShrink: 0 }}>
-          <span style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0', letterSpacing: '-0.03em', fontFamily: "'Syne', sans-serif", whiteSpace: 'nowrap' }}>TioTrack</span>
-          <p style={{ fontSize: 10, color: S.textMuted, fontFamily: "'DM Sans', sans-serif", marginTop: -2, whiteSpace: 'nowrap' }}>central de performance</p>
-        </motion.div>
-      </div>
-
-      {/* Nav */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '10px 6px', scrollbarWidth: 'none' }}>
-        <SectionLabel label="Principal" collapsed={collapsed}/>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {navMain.map(n => <NavItem key={n.href} {...n} active={pathname === n.href || pathname.startsWith(n.href + '/')} collapsed={collapsed}/>)}
+        width: 290, height: '100%',
+        padding: 16,
+        background: '#0b0d18',
+        borderRight: '1px solid rgba(148,163,184,.08)',
+        backdropFilter: 'blur(22px)',
+        WebkitBackdropFilter: 'blur(22px)',
+        position: 'relative',
+        zIndex: 3,
+      }}
+    >
+      <div className="tt-panel" style={{ height: '100%', padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 4px 10px' }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 14,
+            background: 'linear-gradient(135deg, rgba(163,167,242,.28) 0%, rgba(163,167,242,.22) 100%)',
+            border: '1px solid rgba(185,188,247,.22)',
+            display: 'grid', placeItems: 'center',
+            boxShadow: '0 12px 32px rgba(163,167,242,.14)',
+          }}>
+            <BarChart3 size={22} color="#dcdefd" />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 19, fontWeight: 800, color: '#eceefb', fontFamily: "var(--font-inter, Inter), Inter, sans-serif" }}>Tiotrack</div>
+            <div style={{ marginTop: 2, fontSize: 12, color: '#9ea3c2' }}>Operation Control Center</div>
+          </div>
         </div>
-        <Sep/>
-        <SectionLabel label="Sistema" collapsed={collapsed}/>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {navSystem.map(n => <NavItem key={n.href} {...n} active={pathname === n.href || pathname.startsWith(n.href + '/')} collapsed={collapsed}/>)}
+
+        <div style={{
+          padding: 14,
+          borderRadius: 16,
+          border: '1px solid rgba(148,163,184,.08)',
+          background: 'linear-gradient(180deg, rgba(163,167,242,.12) 0%, rgba(255,255,255,.02) 100%)',
+        }}>
+          <div className="tt-badge" style={{ width: 'fit-content', background: 'rgba(255,255,255,.04)' }}>
+            <Sparkles size={12} color="#a3a7f2" />
+            Workspace ativo
+          </div>
+          <div style={{ marginTop: 12, fontSize: 18, fontWeight: 800, color: '#eceefb', fontFamily: "var(--font-inter, Inter), Inter, sans-serif" }}>
+            {active?.nome || 'Selecione um workspace'}
+          </div>
+          <p style={{ marginTop: 8, color: '#9ea3c2', fontSize: 12, lineHeight: 1.65 }}>
+            Painel único para tráfego, atribuição, funil e qualidade de eventos.
+          </p>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', paddingRight: 2 }} className="no-scrollbar">
+          {groups.map((group) => (
+            <div key={group.title} style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 11, color: '#666c8e', textTransform: 'uppercase', letterSpacing: '.14em', fontWeight: 800, padding: '0 8px 10px' }}>
+                {group.title}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {group.items.map((item) => {
+                  const activeItem = item.href === '/traffic'
+                    ? pathname === item.href || pathname.startsWith('/traffic/')
+                    : pathname === item.href || pathname.startsWith(item.href + '/')
+                  return <NavItem key={item.href} item={item} active={activeItem} />
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          padding: 14,
+          borderRadius: 16,
+          border: '1px solid rgba(148,163,184,.08)',
+          background: 'rgba(255,255,255,.02)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#9ea3c2', fontWeight: 600 }}>Status da central</div>
+              <div style={{ marginTop: 4, fontSize: 16, color: '#eceefb', fontWeight: 800, fontFamily: "var(--font-inter, Inter), Inter, sans-serif" }}>Live monitor</div>
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: '#74d3ab', fontSize: 11, fontWeight: 800 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 999, background: '#74d3ab', boxShadow: '0 0 18px rgba(116,211,171,.75)' }} /> ON
+            </div>
+          </div>
+          <button onClick={handleLogout} className="tt-btn tt-btn-ghost" style={{ width: '100%', marginTop: 12, justifyContent: 'space-between' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><LogOut size={14} /> Sair da conta</span>
+            <ChevronRight size={14} />
+          </button>
         </div>
       </div>
-
-      {/* Bottom */}
-      <div style={{ padding: '6px 6px 10px', borderTop: `1px solid ${S.border}`, flexShrink: 0 }}>
-        <MetaRing collapsed={collapsed}/>
-        <div style={{ height: 4 }}/>
-        <LogoutButton collapsed={collapsed}/>
-      </div>
-
-    </motion.aside>
+    </aside>
   )
-}
-
-export default function Sidebar() {
-  return <SidebarDesktop/>
 }

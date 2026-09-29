@@ -1,408 +1,238 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import {
-  RefreshCw, Layers, Megaphone, Image, AlertCircle, ChevronDown, ChevronUp,
-  Search, ArrowUpRight, Plug, Target,
-} from 'lucide-react'
-import { motion } from 'framer-motion'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowDown, ArrowUp, Receipt, CircleDollarSign, Target, Crosshair, RefreshCw, Search, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/store/workspace'
-import { SpotlightCard } from '@/components/ui/aceternity'
+import { H, Panel, KpiCard, Empty, brl, short } from '@/components/hawk/ui'
 
 type Period = 'hoje' | '7d' | '30d'
-type Tab    = 'campanhas' | 'adsets' | 'anuncios'
+type Tab = 'campanhas' | 'adsets' | 'anuncios'
 type Source = 'todos' | 'tiktok' | 'meta'
+type Health = 'todos' | 'escala' | 'atencao'
+type SortKey = 'spend' | 'receita' | 'roas' | 'conversions' | 'cpa' | 'ctr' | 'cpm' | 'nome'
+type Row = { key: string; id: string; nome: string; platform: 'tiktok' | 'meta'; conta?: string; spend: number; receita: number; roas: number; conversions: number; cpa: number; impressions: number; clicks: number; ctr: number; cpm: number; cpc: number; score: string }
 
-const T = {
-  bg: 'rgba(8,8,14,0.92)', border: 'rgba(255,255,255,0.055)',
-  text: '#dcdcf0', sub: '#8a8aaa', muted: '#4a4a6a',
-  green: '#10b981', red: '#ef4444', amber: '#f59e0b',
-  blue: '#3b82f6', mono: "'JetBrains Mono', monospace",
-  sans: "'DM Sans', sans-serif", display: "'Syne', sans-serif",
-}
-
-type Row = {
-  key: string; nome: string; conta?: string
-  spend: number; receita: number; roas: number
-  conversions: number; impressions: number; clicks: number
-  ctr: number; cpm: number; cpc: number; score: string
-}
-
-const hoje      = () => new Date().toISOString().split('T')[0]
+const hoje = () => new Date().toISOString().split('T')[0]
 const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0] }
-const toBRL     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
-const fmtNum    = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(1)}k` : String(Math.round(v))
 const calcScore = (r: number) => r >= 3.5 ? 'S' : r >= 2.5 ? 'A' : r >= 1.5 ? 'B' : r >= 0.8 ? 'C' : 'D'
-
-const SCORE: Record<string, { bg: string; color: string }> = {
-  S: { bg: 'rgba(59,130,246,0.15)',  color: '#60a5fa' },
-  A: { bg: 'rgba(16,185,129,0.12)',  color: '#34d399' },
-  B: { bg: 'rgba(245,158,11,0.12)',  color: '#fcd34d' },
-  C: { bg: 'rgba(239,68,68,0.10)',   color: '#fb7185' },
-  D: { bg: 'rgba(100,116,139,0.08)', color: '#64748b' },
-}
-
-function ScoreBadge({ score }: { score: string }) {
-  const s = SCORE[score] ?? SCORE.D
-  return (
-    <span style={{ width: 24, height: 24, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, fontFamily: T.mono, background: s.bg, color: s.color, flexShrink: 0 }}>
-      {score}
-    </span>
-  )
-}
-
-function TableRow({ row, rank }: { row: Row; rank: number }) {
-  const [open, setOpen] = useState(false)
-  const roasColor = row.roas >= 2.5 ? T.green : row.roas >= 1 ? T.amber : T.red
-
-  return (
-    <>
-      <tr onClick={() => setOpen(o => !o)}
-        style={{ cursor: 'pointer', background: open ? 'rgba(59,130,246,0.04)' : 'transparent', borderBottom: `1px solid ${T.border}`, transition: 'background 100ms' }}
-        onMouseEnter={e => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
-        onMouseLeave={e => { if (!open) e.currentTarget.style.background = 'transparent' }}>
-        <td style={{ padding: '10px 10px 10px 16px', width: 32 }}>
-          <span style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>{String(rank).padStart(2, '0')}</span>
-        </td>
-        <td style={{ padding: '10px 8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {open
-              ? <ChevronUp size={12} style={{ color: T.blue, flexShrink: 0 }}/>
-              : <ChevronDown size={12} style={{ color: T.muted, flexShrink: 0 }}/>}
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12, color: T.text, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: T.sans }}>{row.nome || '—'}</div>
-              {row.conta && <div style={{ fontSize: 10, color: T.muted, marginTop: 1, fontFamily: T.sans }}>{row.conta}</div>}
-            </div>
-          </div>
-        </td>
-        <td style={{ padding: '10px 8px', textAlign: 'center' }}><ScoreBadge score={row.score}/></td>
-        <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: T.mono, fontSize: 12, color: T.text }}>{toBRL(row.spend)}</td>
-        <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: T.mono, fontSize: 12, color: T.green }}>{toBRL(row.receita)}</td>
-        <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-          <span style={{ fontFamily: T.mono, fontSize: 12, color: roasColor, fontWeight: 600 }}>{row.roas.toFixed(2)}x</span>
-        </td>
-        <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: T.mono, fontSize: 11, color: T.sub }}>{fmtNum(row.conversions)}</td>
-        <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: T.mono, fontSize: 11, color: T.muted }}>{fmtNum(row.impressions)}</td>
-        <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: T.mono, fontSize: 11, color: T.muted }}>{row.ctr.toFixed(2)}%</td>
-        <td style={{ padding: '10px 16px 10px 8px', textAlign: 'right', fontFamily: T.mono, fontSize: 11, color: T.muted }}>{toBRL(row.cpm)}</td>
-      </tr>
-      {open && (
-        <tr style={{ background: 'rgba(59,130,246,0.03)', borderBottom: `1px solid ${T.border}` }}>
-          <td colSpan={10} style={{ padding: '0 16px 14px 52px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, paddingTop: 10 }}>
-              {[
-                { label: 'CPC',    value: toBRL(row.cpc) },
-                { label: 'Cliques', value: fmtNum(row.clicks) },
-                { label: 'CPV',    value: row.conversions > 0 ? toBRL(row.spend / row.conversions) : '—' },
-                { label: 'Margem', value: row.roas >= 1 ? `+${((row.roas-1)*100).toFixed(0)}%` : `${((row.roas-1)*100).toFixed(0)}%` },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ background: 'rgba(10,10,18,0.8)', border: `1px solid ${T.border}`, borderRadius: 8, padding: '8px 12px' }}>
-                  <div style={{ fontSize: 10, color: T.muted, marginBottom: 3, textTransform: 'uppercase' as const, letterSpacing: '0.06em', fontFamily: T.display }}>{label}</div>
-                  <div style={{ fontFamily: T.mono, fontSize: 13, color: T.text, fontWeight: 500 }}>{value}</div>
-                </div>
-              ))}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  )
-}
+const scoreColor: Record<string, string> = { S: '#dcdefd', A: H.green, B: H.amber, C: '#f0a3b0', D: H.muted }
+const PLATFORM = { tiktok: { label: 'TikTok', color: '#dcdefd' }, meta: { label: 'Meta', color: '#8c91ea' } }
 
 export default function CampanhasPage() {
   const { active: workspace } = useWorkspaceStore()
-  const [source, setSource]   = useState<Source>('tiktok')
-  const [period, setPeriod]   = useState<Period>('7d')
-  const [tab, setTab]         = useState<Tab>('campanhas')
-  const [filter, setFilter]   = useState('all')
-  const [search, setSearch]   = useState('')
+  const [source, setSource] = useState<Source>('todos')
+  const [period, setPeriod] = useState<Period>('7d')
+  const [tab, setTab] = useState<Tab>('campanhas')
+  const [filter, setFilter] = useState('all')
+  const [health, setHealth] = useState<Health>('todos')
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'spend', dir: -1 })
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [tkData, setTkData]   = useState<any[]>([])
-  const [bcs, setBcs]         = useState<{id:string;apelido:string}[]>([])
-  const [metaData, setMetaData]   = useState<any[]>([])
-  const [metaAccs, setMetaAccs]   = useState<{account_fb_id:string;nome:string}[]>([])
+  const [tkData, setTkData] = useState<any[]>([])
+  const [bcs, setBcs] = useState<{ id: string; apelido: string }[]>([])
+  const [metaData, setMetaData] = useState<any[]>([])
+  const [metaAccs, setMetaAccs] = useState<{ account_fb_id: string; nome: string }[]>([])
 
   async function load(wid: string, p: Period) {
     setLoading(true)
-    const from = p === 'hoje' ? hoje() : diasAtras(p === '7d' ? 7 : 30)
+    const from = p === 'hoje' ? hoje() : diasAtras(p === '7d' ? 6 : 29)
     const [tkRes, bcRes, metaRes, maRes] = await Promise.all([
       supabase.from('ad_spend_daily').select('campaign_id,campaign_name,adgroup_id,adgroup_name,ad_id,ad_name,bc_config_id,spend,conversion_value,conversions,impressions,clicks,ctr,cpm,cpc').eq('workspace_id', wid).gte('dia', from).lte('dia', hoje()),
       supabase.from('bc_configs').select('id,apelido').eq('workspace_id', wid),
       (supabase as any).from('meta_ad_spend_daily').select('campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,account_fb_id,spend,conversion_value,conversions,impressions,clicks,ctr,cpm,cpc').eq('workspace_id', wid).gte('dia', from).lte('dia', hoje()),
       (supabase as any).from('meta_ad_accounts').select('account_fb_id,nome').eq('workspace_id', wid),
     ])
-    setTkData(tkRes.data ?? []); setBcs(bcRes.data ?? [])
-    setMetaData((metaRes as any).data ?? []); setMetaAccs((maRes as any).data ?? [])
-    setLoading(false); setRefreshing(false)
+    setTkData(tkRes.data ?? [])
+    setBcs(bcRes.data ?? [])
+    setMetaData((metaRes as any).data ?? [])
+    setMetaAccs((maRes as any).data ?? [])
+    setLoading(false)
+    setRefreshing(false)
   }
 
   useEffect(() => { if (workspace?.id) load(workspace.id, period) }, [workspace?.id, period])
+  useEffect(() => { setSelected(new Set()) }, [tab, source, period, workspace?.id])
 
-  const tkRows = useMemo(() => {
-    const filtered = filter === 'all' ? tkData : tkData.filter((r: any) => r.bc_config_id === filter)
-    const bcMap = Object.fromEntries(bcs.map(b => [b.id, b.apelido]))
+  const aggregate = (rows: any[], platform: 'tiktok' | 'meta'): Row[] => {
+    const accountMap = platform === 'tiktok' ? Object.fromEntries(bcs.map(b => [b.id, b.apelido])) : Object.fromEntries(metaAccs.map(a => [a.account_fb_id, a.nome]))
+    const filtered = filter === 'all' ? rows : rows.filter((r: any) => platform === 'tiktok' ? r.bc_config_id === filter : r.account_fb_id === filter)
     const agg: Record<string, any> = {}
     for (const r of filtered) {
-      const key  = tab === 'campanhas' ? r.campaign_id ?? 'x' : tab === 'adsets' ? r.adgroup_id ?? 'x' : r.ad_id ?? 'x'
-      const nome = tab === 'campanhas' ? r.campaign_name ?? '—' : tab === 'adsets' ? r.adgroup_name ?? '—' : r.ad_name ?? '—'
-      if (!agg[key]) agg[key] = { key, nome, conta: bcMap[r.bc_config_id], spend: 0, receita: 0, conversions: 0, impressions: 0, clicks: 0, ctr_s: 0, cpm_s: 0, cpc_s: 0, n: 0 }
-      agg[key].spend += r.spend ?? 0; agg[key].receita += r.conversion_value ?? 0
-      agg[key].conversions += r.conversions ?? 0; agg[key].impressions += r.impressions ?? 0
-      agg[key].clicks += r.clicks ?? 0; agg[key].ctr_s += r.ctr ?? 0; agg[key].cpm_s += r.cpm ?? 0; agg[key].cpc_s += r.cpc ?? 0; agg[key].n++
+      const id = tab === 'campanhas' ? (r.campaign_id || r.campaign_name || 'x') : tab === 'adsets' ? (platform === 'tiktok' ? r.adgroup_id : r.adset_id) || 'x' : r.ad_id || 'x'
+      const nome = tab === 'campanhas' ? r.campaign_name : tab === 'adsets' ? (platform === 'tiktok' ? r.adgroup_name : r.adset_name) : r.ad_name
+      const key = `${platform}:${id}`
+      if (!agg[key]) agg[key] = { key, id: String(id), platform, nome: nome || '—', conta: accountMap[platform === 'tiktok' ? r.bc_config_id : r.account_fb_id], spend: 0, receita: 0, conversions: 0, impressions: 0, clicks: 0, cpc: 0, n: 0 }
+      const a = agg[key]
+      a.spend += Number(r.spend || 0); a.receita += Number(r.conversion_value || 0); a.conversions += Number(r.conversions || 0); a.impressions += Number(r.impressions || 0); a.clicks += Number(r.clicks || 0); a.cpc += Number(r.cpc || 0); a.n++
     }
-    return Object.values(agg).map((v: any): Row => ({ key: v.key, nome: v.nome, conta: v.conta, spend: v.spend, receita: v.receita, roas: v.spend > 0 ? v.receita / v.spend : 0, conversions: v.conversions, impressions: v.impressions, clicks: v.clicks, ctr: v.n > 0 ? v.ctr_s / v.n : 0, cpm: v.n > 0 ? v.cpm_s / v.n : 0, cpc: v.n > 0 ? v.cpc_s / v.n : 0, score: calcScore(v.spend > 0 ? v.receita / v.spend : 0) })).sort((a, b) => b.spend - a.spend)
-  }, [tkData, tab, filter, bcs])
-
-  const metaRows = useMemo(() => {
-    const filtered = filter === 'all' ? metaData : metaData.filter((r: any) => r.account_fb_id === filter)
-    const accMap = Object.fromEntries(metaAccs.map(a => [a.account_fb_id, a.nome]))
-    const agg: Record<string, any> = {}
-    for (const r of filtered) {
-      const key  = tab === 'campanhas' ? r.campaign_id ?? r.campaign_name ?? 'x' : tab === 'adsets' ? r.adset_id ?? r.adset_name ?? 'x' : r.ad_id ?? 'x'
-      const nome = tab === 'campanhas' ? r.campaign_name ?? '—' : tab === 'adsets' ? r.adset_name ?? '—' : r.ad_name ?? '—'
-      if (!agg[key]) agg[key] = { key, nome, conta: accMap[r.account_fb_id], spend: 0, receita: 0, conversions: 0, impressions: 0, clicks: 0, ctr_s: 0, cpm_s: 0, cpc_s: 0, n: 0 }
-      agg[key].spend += r.spend ?? 0; agg[key].receita += r.conversion_value ?? 0
-      agg[key].conversions += r.conversions ?? 0; agg[key].impressions += r.impressions ?? 0
-      agg[key].clicks += r.clicks ?? 0; agg[key].ctr_s += r.ctr ?? 0; agg[key].cpm_s += r.cpm ?? 0; agg[key].cpc_s += r.cpc ?? 0; agg[key].n++
-    }
-    return Object.values(agg).map((v: any): Row => ({ key: v.key, nome: v.nome, conta: v.conta, spend: v.spend, receita: v.receita, roas: v.spend > 0 ? v.receita / v.spend : 0, conversions: v.conversions, impressions: v.impressions, clicks: v.clicks, ctr: v.n > 0 ? v.ctr_s / v.n : 0, cpm: v.n > 0 ? v.cpm_s / v.n : 0, cpc: v.n > 0 ? v.cpc_s / v.n : 0, score: calcScore(v.spend > 0 ? v.receita / v.spend : 0) })).sort((a, b) => b.spend - a.spend)
-  }, [metaData, tab, filter, metaAccs])
-
-  const rows = (() => {
-    if (source === 'todos') {
-      const map: Record<string, Row> = {}
-      const merge = (r: Row) => {
-        if (!map[r.nome]) { map[r.nome] = { ...r }; return }
-        const e = map[r.nome]
-        e.spend += r.spend; e.receita += r.receita; e.conversions += r.conversions
-        e.impressions += r.impressions; e.clicks += r.clicks
-        e.roas = e.spend > 0 ? e.receita / e.spend : 0; e.score = calcScore(e.roas)
-        e.ctr = e.impressions > 0 ? e.clicks / e.impressions * 100 : 0
-        e.cpm = e.impressions > 0 ? e.spend / e.impressions * 1000 : 0
-        e.cpc = e.clicks > 0 ? e.spend / e.clicks : 0
+    return Object.values(agg).map((a: any): Row => {
+      const roas = a.spend > 0 ? a.receita / a.spend : 0
+      return {
+        ...a, roas, score: calcScore(roas),
+        cpa: a.conversions > 0 ? a.spend / a.conversions : 0,
+        // CTR/CPM ponderados por impressão (média de médias distorce)
+        ctr: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0,
+        cpm: a.impressions > 0 ? (a.spend / a.impressions) * 1000 : 0,
+        cpc: a.n ? a.cpc / a.n : 0,
       }
-      tkRows.forEach(merge); metaRows.forEach(merge)
-      return Object.values(map).sort((a, b) => b.spend - a.spend)
-    }
-    return source === 'tiktok' ? tkRows : metaRows
-  })()
+    })
+  }
+
+  const tkRows = useMemo(() => aggregate(tkData, 'tiktok'), [tkData, tab, filter, bcs])
+  const metaRows = useMemo(() => aggregate(metaData, 'meta'), [metaData, tab, filter, metaAccs])
+
+  const rows = useMemo(() => source === 'tiktok' ? tkRows : source === 'meta' ? metaRows : [...tkRows, ...metaRows], [source, tkRows, metaRows])
 
   const visibleRows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter(r =>
-      r.nome.toLowerCase().includes(q) ||
-      (r.conta ?? '').toLowerCase().includes(q) ||
-      r.score.toLowerCase().includes(q)
-    )
-  }, [rows, search])
+    return rows
+      .filter(r => !q || `${r.nome} ${r.id} ${r.conta || ''}`.toLowerCase().includes(q))
+      .filter(r => health === 'todos' || (health === 'escala' ? r.roas >= 2.5 : r.spend > 0 && r.roas < 1))
+      .sort((a, b) => sort.key === 'nome' ? a.nome.localeCompare(b.nome) * sort.dir : ((a[sort.key] as number) - (b[sort.key] as number)) * sort.dir)
+  }, [rows, search, health, sort])
 
-  const totais = {
-    spend:       visibleRows.reduce((s, r) => s + r.spend, 0),
-    receita:     visibleRows.reduce((s, r) => s + r.receita, 0),
-    conversions: visibleRows.reduce((s, r) => s + r.conversions, 0),
-    roas:        visibleRows.reduce((s, r) => s + r.spend, 0) > 0 ? visibleRows.reduce((s, r) => s + r.receita, 0) / visibleRows.reduce((s, r) => s + r.spend, 0) : 0,
+  const sum = (list: Row[]) => {
+    const spend = list.reduce((s, r) => s + r.spend, 0)
+    const receita = list.reduce((s, r) => s + r.receita, 0)
+    const conversions = list.reduce((s, r) => s + r.conversions, 0)
+    return { spend, receita, conversions, roas: spend > 0 ? receita / spend : 0, cpa: conversions > 0 ? spend / conversions : 0 }
   }
-  const best = visibleRows.find(r => r.spend > 0 && r.roas >= 1)
-  const weak = [...visibleRows].filter(r => r.spend > 0).sort((a, b) => a.roas - b.roas)[0]
-  const scalable = visibleRows.filter(r => r.roas >= 2.5).length
-  const risky = visibleRows.filter(r => r.spend > 0 && r.roas < 1).length
+  const totals = useMemo(() => ({ ...sum(visibleRows), scalable: visibleRows.filter(r => r.roas >= 2.5).length, risky: visibleRows.filter(r => r.spend > 0 && r.roas < 1).length }), [visibleRows])
+  const selTotals = useMemo(() => sum(visibleRows.filter(r => selected.has(r.key))), [visibleRows, selected])
 
-  const filterOptions = source === 'tiktok' ? bcs.map(b => ({ id: b.id, label: b.apelido })) : metaAccs.map(a => ({ id: a.account_fb_id, label: a.nome }))
-  const TABS = [
-    { key: 'campanhas', label: 'Campanhas', icon: Layers },
-    { key: 'adsets',    label: source === 'tiktok' ? 'Adsets' : 'Conjuntos', icon: Megaphone },
-    { key: 'anuncios',  label: 'Anúncios', icon: Image },
+  const filterOptions = source === 'tiktok' ? bcs.map(b => ({ id: b.id, label: b.apelido })) : source === 'meta' ? metaAccs.map(a => ({ id: a.account_fb_id, label: a.nome })) : []
+  const tabs: { key: Tab; label: string }[] = [{ key: 'campanhas', label: 'Campanhas' }, { key: 'adsets', label: 'Grupos de anúncios' }, { key: 'anuncios', label: 'Anúncios' }]
+  const entity = tab === 'campanhas' ? 'Campanha' : tab === 'adsets' ? 'Grupo de anúncios' : 'Anúncio'
+  const allChecked = visibleRows.length > 0 && visibleRows.every(r => selected.has(r.key))
+
+  function toggle(key: string) { setSelected(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n }) }
+  function toggleAll() { setSelected(allChecked ? new Set() : new Set(visibleRows.map(r => r.key))) }
+  function sortBy(key: SortKey) { setSort(s => s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === 'nome' ? 1 : -1 }) }
+
+  const cols: { key: SortKey | null; label: string; align: 'left' | 'right' }[] = [
+    { key: 'nome', label: entity, align: 'left' },
+    { key: null, label: 'Plataforma', align: 'left' },
+    { key: null, label: 'Score', align: 'left' },
+    { key: 'spend', label: 'Gastos', align: 'right' },
+    { key: 'receita', label: 'Receita', align: 'right' },
+    { key: 'roas', label: 'ROAS', align: 'right' },
+    { key: 'conversions', label: 'Conv.', align: 'right' },
+    { key: 'cpa', label: 'CPA', align: 'right' },
+    { key: 'ctr', label: 'CTR', align: 'right' },
+    { key: 'cpm', label: 'CPM', align: 'right' },
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#0b0f14', position: 'relative' }}>
-
-      {/* Topbar */}
-      <div style={{ height: 50, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 8, flexShrink: 0, background: 'rgba(8,8,14,0.88)', backdropFilter: 'blur(20px)', position: 'relative', zIndex: 10, overflowX: 'auto' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0, marginRight: 8 }}>
-          <span style={{ fontSize: 15, color: T.text, fontWeight: 800, fontFamily: T.display, letterSpacing: '-0.02em' }}>Campanhas</span>
-          <span style={{ fontSize: 10, color: T.muted, fontFamily: T.sans }}>{visibleRows.length} itens filtrados</span>
+    <div className="shell-page">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div>
+          <h1 className="tt-title">Campanhas</h1>
+          <div className="tt-cap" style={{ marginTop: 4 }}>TikTok + Meta · {visibleRows.length} {entity.toLowerCase()}{visibleRows.length === 1 ? '' : 's'} no filtro</div>
         </div>
-
-        {/* Source switcher */}
-        <div style={{ display: 'flex', gap: 2, background: 'rgba(10,10,18,0.8)', border: `1px solid ${T.border}`, borderRadius: 8, padding: 2, flexShrink: 0 }}>
-          {[{ key: 'todos', label: '⚡ Todos' }, { key: 'tiktok', label: '🎵 TikTok' }, { key: 'meta', label: '📘 Meta' }].map(s => (
-            <button key={s.key} onClick={() => { setSource(s.key as Source); setFilter('all') }}
-              style={{ height: 26, padding: '0 12px', borderRadius: 6, background: source === s.key ? 'rgba(255,255,255,0.06)' : 'transparent', border: `1px solid ${source === s.key ? T.border : 'transparent'}`, color: source === s.key ? T.text : T.muted, fontSize: 11, cursor: 'pointer', fontFamily: T.sans, fontWeight: source === s.key ? 500 : 400, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
-              {s.label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="tt-segment">{(['hoje', '7d', '30d'] as Period[]).map(p => <button key={p} data-active={period === p} onClick={() => setPeriod(p)}>{p === 'hoje' ? 'Hoje' : p === '7d' ? '7 dias' : '30 dias'}</button>)}</div>
+          <button className="tt-icon-btn" aria-label="Atualizar" title="Atualizar" onClick={() => { if (workspace?.id) { setRefreshing(true); load(workspace.id, period) } }}><RefreshCw size={14} style={{ animation: refreshing ? 'spin 1s linear infinite' : undefined }} /></button>
         </div>
+      </div>
 
-        {/* Filtro conta */}
-        {source !== 'todos' && filterOptions.length > 1 && (
-          <select value={filter} onChange={e => setFilter(e.target.value)}
-            style={{ height: 28, padding: '0 8px', background: 'rgba(10,10,18,0.8)', border: `1px solid ${T.border}`, borderRadius: 8, color: T.sub, fontSize: 11, cursor: 'pointer', outline: 'none', flexShrink: 0 }}>
-            <option value="all">Todas as contas</option>
-            {filterOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+      <div className="tt-grid-4" style={{ marginBottom: 12, gap: 12 }}>
+        <KpiCard icon={Receipt} label="Gastos" value={brl(totals.spend)} foot={`${visibleRows.length} itens no filtro`} progress={1} loading={loading} />
+        <KpiCard icon={CircleDollarSign} label="Faturamento atribuído" value={brl(totals.receita)} foot={`${totals.conversions} conversões`} progress={totals.spend ? Math.min(1, totals.receita / (totals.spend * 4)) : 0} loading={loading} />
+        <KpiCard icon={Target} label="ROAS" value={`${totals.roas.toFixed(2).replace('.', ',')}x`} foot={`${totals.scalable} prontas p/ escalar`} progress={Math.min(1, totals.roas / 4)} loading={loading} />
+        <KpiCard icon={Crosshair} label="CPA" value={brl(totals.cpa)} foot={totals.risky ? `${totals.risky} com ROAS < 1` : 'nenhuma no vermelho'} progress={visibleRows.length ? 1 - totals.risky / visibleRows.length : 0} loading={loading} />
+      </div>
+
+      <Panel>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, padding: '6px 18px 0', flexWrap: 'wrap' }}>
+          <div className="tt-tabbar no-scrollbar" style={{ borderBottom: 0 }}>
+            {tabs.map(t => <button key={t.key} className="tt-tab" data-active={tab === t.key} onClick={() => setTab(t.key)}>{t.label}</button>)}
+          </div>
+          <div className="tt-segment" style={{ marginBottom: 6 }}>
+            {(['todos', 'tiktok', 'meta'] as Source[]).map(s => <button key={s} data-active={source === s} onClick={() => { setSource(s); setFilter('all') }}>{s === 'todos' ? 'Todas' : PLATFORM[s].label}</button>)}
+          </div>
+        </div>
+        <div style={{ height: 1, background: H.line }} />
+
+        <div style={{ display: 'flex', gap: 8, padding: '12px 18px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ position: 'relative', flex: '0 1 300px', minWidth: 220 }}>
+            <Search size={13} style={{ position: 'absolute', left: 11, top: 12, color: H.muted }} />
+            <input className="tt-input" style={{ paddingLeft: 32 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar nome ou ID..." />
+          </div>
+          <select className="tt-select" style={{ width: 170 }} value={health} onChange={e => setHealth(e.target.value as Health)}>
+            <option value="todos">Todos os status</option>
+            <option value="escala">Escaláveis (ROAS ≥ 2,5)</option>
+            <option value="atencao">Atenção (ROAS &lt; 1)</option>
           </select>
-        )}
-
-        <div style={{ flex: 1 }}/>
-
-        <div style={{ position: 'relative', width: 240, flexShrink: 0 }}>
-          <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.muted, pointerEvents: 'none' }}/>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar campanha..."
-            style={{
-              width: '100%', height: 30, padding: '0 10px 0 30px',
-              borderRadius: 8, border: `1px solid ${T.border}`,
-              background: 'rgba(10,10,18,0.8)',
-              color: T.text, outline: 'none',
-              fontSize: 11, fontFamily: T.sans,
-            }}
-          />
-        </div>
-
-        {/* Período */}
-        {(['hoje', '7d', '30d'] as Period[]).map(p => (
-          <button key={p} onClick={() => setPeriod(p)}
-            style={{ height: 28, padding: '0 12px', borderRadius: 8, background: period === p ? 'rgba(59,130,246,0.12)' : 'transparent', border: `1px solid ${period === p ? 'rgba(59,130,246,0.3)' : T.border}`, color: period === p ? '#60a5fa' : T.muted, fontSize: 11, cursor: 'pointer', fontFamily: T.sans, fontWeight: period === p ? 600 : 400, transition: 'all 0.15s', flexShrink: 0 }}>
-            {p === 'hoje' ? 'Hoje' : p}
-          </button>
-        ))}
-        <button onClick={() => { if (workspace?.id) { setRefreshing(true); load(workspace.id, period) } }}
-          style={{ width: 28, height: 28, borderRadius: 8, background: 'transparent', border: `1px solid ${T.border}`, color: T.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-          <RefreshCw size={12} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }}/>
-        </button>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ height: 42, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 4, flexShrink: 0, background: 'rgba(8,8,14,0.6)', backdropFilter: 'blur(8px)', position: 'relative', zIndex: 9 }}>
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setTab(key as Tab)}
-            style={{ height: 34, padding: '0 14px', borderRadius: 0, background: 'transparent', border: 'none', color: tab === key ? T.text : T.muted, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `2px solid ${tab === key ? '#3b82f6' : 'transparent'}`, transition: 'all 0.15s', fontFamily: T.sans, fontWeight: tab === key ? 600 : 400 }}>
-            <Icon size={13} style={{ color: tab === key ? '#60a5fa' : T.muted }}/>{label}
-          </button>
-        ))}
-      </div>
-
-      {/* KPIs */}
-      {!loading && rows.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
-          {[
-            { label: 'Gasto total',   value: toBRL(totais.spend),   color: T.text },
-            { label: 'Receita total', value: toBRL(totais.receita), color: T.green },
-            { label: 'ROAS geral',    value: `${totais.roas.toFixed(2)}x`, color: totais.roas >= 1.5 ? T.green : T.red },
-            { label: 'Conversões',    value: fmtNum(totais.conversions), color: T.text },
-          ].map((k, i) => (
-            <div key={k.label} style={{ padding: '10px 20px', borderRight: i < 3 ? `1px solid ${T.border}` : 'none' }}>
-              <div style={{ fontSize: 10, color: T.muted, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 4, fontFamily: T.display }}>{k.label}</div>
-              <div style={{ fontFamily: T.display, fontSize: 18, fontWeight: 700, color: k.color, letterSpacing: '-0.02em' }}>{k.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!loading && rows.length > 0 && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1.35fr 1fr 1fr',
-          gap: 10,
-          padding: '12px 16px',
-          borderBottom: `1px solid ${T.border}`,
-          background: 'rgba(8,8,14,0.45)',
-          flexShrink: 0,
-        }}>
-          <div style={{ padding: 14, borderRadius: 12, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.16)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <Target size={14} color={T.blue}/>
-              <span style={{ fontSize: 11, color: T.blue, fontWeight: 700, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Decisão rápida</span>
-            </div>
-            <p style={{ fontSize: 13, color: T.text, fontWeight: 700, fontFamily: T.display, marginBottom: 5 }}>
-              {best ? `Escalar: ${best.nome}` : 'Aguardando campanha vencedora'}
-            </p>
-            <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans }}>
-              {best ? `ROAS ${best.roas.toFixed(2)}x com ${toBRL(best.spend)} em gasto.` : 'Quando houver gasto com retorno, o TioTrack destaca a melhor oportunidade.'}
-            </p>
-          </div>
-          <div style={{ padding: 14, borderRadius: 12, background: 'rgba(16,185,129,0.045)', border: `1px solid ${T.border}` }}>
-            <p style={{ fontSize: 10, color: T.muted, fontWeight: 700, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Prontas para escalar</p>
-            <p style={{ fontSize: 24, color: T.green, fontWeight: 800, fontFamily: T.display, marginBottom: 4 }}>{scalable}</p>
-            <p style={{ fontSize: 12, color: T.sub, fontFamily: T.sans }}>campanhas com ROAS acima de 2.5x</p>
-          </div>
-          <div style={{ padding: 14, borderRadius: 12, background: risky > 0 ? 'rgba(239,68,68,0.045)' : 'rgba(255,255,255,0.02)', border: `1px solid ${T.border}` }}>
-            <p style={{ fontSize: 10, color: T.muted, fontWeight: 700, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Atenção</p>
-            <p style={{ fontSize: 24, color: risky > 0 ? T.red : T.muted, fontWeight: 800, fontFamily: T.display, marginBottom: 4 }}>{risky}</p>
-            <p style={{ fontSize: 12, color: T.sub, fontFamily: T.sans }}>
-              {weak && risky > 0 ? `${weak.nome.slice(0, 32)} com ROAS ${weak.roas.toFixed(2)}x` : 'nenhum corte urgente no filtro atual'}
-            </p>
+          {filterOptions.length > 0 && (
+            <select className="tt-select" style={{ width: 200 }} value={filter} onChange={e => setFilter(e.target.value)}>
+              <option value="all">Todas as contas</option>
+              {filterOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: H.sub, minHeight: 36 }}>
+            {selected.size > 0 ? (
+              <>
+                <span><b style={{ color: H.text }}>{selected.size}</b> selecionado{selected.size === 1 ? '' : 's'}</span>
+                <span style={{ color: H.muted }}>·</span>
+                <span>Gasto <b style={{ color: H.text }}>{brl(selTotals.spend)}</b></span>
+                <span>Receita <b style={{ color: H.text }}>{brl(selTotals.receita)}</b></span>
+                <span>ROAS <b style={{ color: H.text }}>{selTotals.roas.toFixed(2).replace('.', ',')}x</b></span>
+                <button className="tt-icon-btn" style={{ width: 28, height: 28 }} onClick={() => setSelected(new Set())} aria-label="Limpar seleção"><X size={13} /></button>
+              </>
+            ) : <span style={{ color: H.muted }}>Selecione linhas para somar</span>}
           </div>
         </div>
-      )}
 
-      {/* Tabela */}
-      <div style={{ flex: 1, overflowY: 'auto', position: 'relative', zIndex: 1 }}>
-        {visibleRows.length === 0 && !loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 360, gap: 14, padding: 24, textAlign: 'center' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {search ? <Search size={22} style={{ color: T.blue }}/> : <AlertCircle size={22} style={{ color: T.blue }}/>}
-            </div>
-            <div>
-              <p style={{ fontSize: 17, color: T.text, fontWeight: 800, fontFamily: T.display, marginBottom: 6 }}>
-                {search ? 'Nenhuma campanha encontrada' : 'Campanhas ainda sem dados'}
-              </p>
-              <p style={{ fontSize: 13, color: T.sub, fontFamily: T.sans, lineHeight: 1.5, maxWidth: 420 }}>
-                {search
-                  ? 'Tente outro termo ou limpe a busca para voltar ao ranking completo.'
-                  : source === 'tiktok'
-                    ? 'Conecte uma BC em Integrações e sincronize para ver gasto, receita e ROAS.'
-                    : 'Conecte uma conta Meta em Integrações para trazer campanhas do Facebook e Instagram Ads.'}
-              </p>
-            </div>
-            {!search && (
-              <button onClick={() => { window.location.href = '/integracoes' }}
-                style={{ height: 34, padding: '0 14px', borderRadius: 9, background: 'rgba(59,130,246,0.14)', border: '1px solid rgba(59,130,246,0.28)', color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.sans }}>
-                <Plug size={13}/> Abrir integrações <ArrowUpRight size={12}/>
-              </button>
-            )}
-          </div>
-        ) : (
-          <table style={{ width: '100%', minWidth: 920, borderCollapse: 'collapse' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tt-table" style={{ minWidth: 1040 }}>
             <thead>
               <tr>
-                {['#', 'Nome', 'Score', 'Gasto', 'Receita', 'ROAS', 'Conv.', 'Impres.', 'CTR', 'CPM'].map((h, i) => (
-                  <th key={h} style={{ padding: '8px 8px', textAlign: i <= 1 ? 'left' : i === 2 ? 'center' : 'right', fontSize: 10, color: T.muted, fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.06em', background: 'rgba(8,8,14,0.95)', borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap', paddingLeft: i === 0 ? 16 : undefined, paddingRight: i === 9 ? 16 : undefined, fontFamily: T.display }}>
-                    {h}
+                <th style={{ width: 40, paddingRight: 0 }}><input type="checkbox" className="tt-check" checked={allChecked} onChange={toggleAll} aria-label="Selecionar todos" /></th>
+                {cols.map(c => (
+                  <th key={c.label} style={{ textAlign: c.align, cursor: c.key ? 'pointer' : 'default', userSelect: 'none' }} onClick={() => c.key && sortBy(c.key)}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: sort.key === c.key ? H.text : undefined }}>
+                      {c.label}
+                      {sort.key === c.key && (sort.dir === -1 ? <ArrowDown size={11} /> : <ArrowUp size={11} />)}
+                    </span>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {loading
-                ? Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${T.border}` }}>
-                    {Array.from({ length: 10 }).map((_, j) => (
-                      <td key={j} style={{ padding: '12px 8px' }}>
-                        <div style={{ height: 14, borderRadius: 4, background: 'rgba(255,255,255,0.04)', animation: 'sk 1.4s ease-in-out infinite', backgroundSize: '200% 100%' }}/>
-                      </td>
-                    ))}
+              {visibleRows.map(row => {
+                const on = selected.has(row.key)
+                return (
+                  <tr key={row.key} style={{ background: on ? 'rgba(163,167,242,.06)' : undefined }}>
+                    <td style={{ paddingRight: 0 }}><input type="checkbox" className="tt-check" checked={on} onChange={() => toggle(row.key)} aria-label={`Selecionar ${row.nome}`} /></td>
+                    <td style={{ maxWidth: 380 }}>
+                      <div style={{ color: H.text, fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.nome}</div>
+                      <div className="tt-mono" style={{ color: H.muted, fontSize: 10.5, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.id}{row.conta ? ` · ${row.conta}` : ''}</div>
+                    </td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: H.sub, fontSize: 12 }}>
+                        <span className="tt-status-dot" style={{ width: 6, height: 6, background: PLATFORM[row.platform].color }} />{PLATFORM[row.platform].label}
+                      </span>
+                    </td>
+                    <td><span style={{ display: 'inline-grid', placeItems: 'center', width: 24, height: 24, borderRadius: 7, background: `${scoreColor[row.score]}14`, border: `1px solid ${scoreColor[row.score]}33`, color: scoreColor[row.score], fontWeight: 800, fontSize: 11 }}>{row.score}</span></td>
+                    <td style={{ textAlign: 'right', color: H.text, fontWeight: 600 }}>{brl(row.spend)}</td>
+                    <td style={{ textAlign: 'right', color: H.text }}>{brl(row.receita)}</td>
+                    <td style={{ textAlign: 'right', color: row.roas >= 2 ? H.green : row.roas >= 1 ? H.amber : row.spend > 0 ? H.red : H.muted, fontWeight: 700 }}>{row.roas.toFixed(2).replace('.', ',')}x</td>
+                    <td style={{ textAlign: 'right', color: H.sub }}>{short(row.conversions)}</td>
+                    <td style={{ textAlign: 'right', color: H.sub }}>{row.cpa ? brl(row.cpa, 2) : '—'}</td>
+                    <td style={{ textAlign: 'right', color: H.sub }}>{row.ctr.toFixed(2).replace('.', ',')}%</td>
+                    <td style={{ textAlign: 'right', color: H.sub }}>{brl(row.cpm, 2)}</td>
                   </tr>
-                ))
-                : visibleRows.map((row, i) => <TableRow key={row.key} row={row} rank={i + 1}/>)
-              }
+                )
+              })}
             </tbody>
           </table>
-        )}
-      </div>
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg) } }
-        @keyframes sk   { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-        @media (max-width: 768px) {
-          table th:nth-child(n+8), table td:nth-child(n+8) { display: none; }
-        }
-      `}</style>
+        </div>
+        {!loading && visibleRows.length === 0 && <Empty pad={44}>Sem dados para esse filtro.</Empty>}
+        <div className="tt-cap" style={{ padding: '12px 18px' }}>{visibleRows.length} de {rows.length}</div>
+      </Panel>
     </div>
   )
 }

@@ -259,11 +259,14 @@ export type Database = {
       conversions: {
         Row: {
           categoria: string | null
+          click_id: string | null
           created_at: string
           customer_name: string | null
           customer_phone: string | null
           dia: string | null
           external_id: string | null
+          fbclid: string | null
+          gclid: string | null
           id: string
           moeda: string | null
           payment_method: string | null
@@ -286,11 +289,14 @@ export type Database = {
         }
         Insert: {
           categoria?: string | null
+          click_id?: string | null
           created_at?: string
           customer_name?: string | null
           customer_phone?: string | null
           dia?: string | null
           external_id?: string | null
+          fbclid?: string | null
+          gclid?: string | null
           id?: string
           moeda?: string | null
           payment_method?: string | null
@@ -313,11 +319,14 @@ export type Database = {
         }
         Update: {
           categoria?: string | null
+          click_id?: string | null
           created_at?: string
           customer_name?: string | null
           customer_phone?: string | null
           dia?: string | null
           external_id?: string | null
+          fbclid?: string | null
+          gclid?: string | null
           id?: string
           moeda?: string | null
           payment_method?: string | null
@@ -509,13 +518,23 @@ export type Database = {
       }
       sessions: {
         Row: {
+          browser: string | null
+          click_id: string | null
           converteu: boolean | null
+          country: string | null
           created_at: string
+          device_type: string | null
+          fbc: string | null
+          fbp: string | null
           fbclid: string | null
+          gclid: string | null
           id: string
           ip: string | null
           landing_url: string | null
+          last_seen_at: string | null
+          os: string | null
           referer: string | null
+          region: string | null
           session_id: string
           ttclid: string | null
           user_agent: string | null
@@ -525,16 +544,27 @@ export type Database = {
           utm_medium: string | null
           utm_source: string | null
           utm_term: string | null
+          visitor_id: string | null
           workspace_id: string
         }
         Insert: {
+          browser?: string | null
+          click_id?: string | null
           converteu?: boolean | null
+          country?: string | null
           created_at?: string
+          device_type?: string | null
+          fbc?: string | null
+          fbp?: string | null
           fbclid?: string | null
+          gclid?: string | null
           id?: string
           ip?: string | null
           landing_url?: string | null
+          last_seen_at?: string | null
+          os?: string | null
           referer?: string | null
+          region?: string | null
           session_id: string
           ttclid?: string | null
           user_agent?: string | null
@@ -544,16 +574,27 @@ export type Database = {
           utm_medium?: string | null
           utm_source?: string | null
           utm_term?: string | null
+          visitor_id?: string | null
           workspace_id: string
         }
         Update: {
+          browser?: string | null
+          click_id?: string | null
           converteu?: boolean | null
+          country?: string | null
           created_at?: string
+          device_type?: string | null
+          fbc?: string | null
+          fbp?: string | null
           fbclid?: string | null
+          gclid?: string | null
           id?: string
           ip?: string | null
           landing_url?: string | null
+          last_seen_at?: string | null
+          os?: string | null
           referer?: string | null
+          region?: string | null
           session_id?: string
           ttclid?: string | null
           user_agent?: string | null
@@ -563,11 +604,231 @@ export type Database = {
           utm_medium?: string | null
           utm_source?: string | null
           utm_term?: string | null
+          visitor_id?: string | null
           workspace_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "sessions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      traffic_domains: {
+        Row: {
+          created_at: string
+          hostname: string
+          id: string
+          last_seen_at: string | null
+          status: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          hostname: string
+          id?: string
+          last_seen_at?: string | null
+          status?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          hostname?: string
+          id?: string
+          last_seen_at?: string | null
+          status?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_domains_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      traffic_events: {
+        Row: {
+          action: string
+          asn: string | null
+          browser: string | null
+          city: string | null
+          click_id: string | null
+          country: string | null
+          created_at: string
+          device_type: string | null
+          event_name: string
+          fbclid: string | null
+          gclid: string | null
+          id: string
+          ip: string | null
+          landing_url: string | null
+          language: string | null
+          metadata: Json
+          os: string | null
+          path: string | null
+          reason: string | null
+          referer: string | null
+          region: string | null
+          request_id: string
+          risk_score: number
+          session_id: string | null
+          ttclid: string | null
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_id: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          visitor_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          action?: string
+          asn?: string | null
+          browser?: string | null
+          city?: string | null
+          click_id?: string | null
+          country?: string | null
+          created_at?: string
+          device_type?: string | null
+          event_name?: string
+          fbclid?: string | null
+          gclid?: string | null
+          id?: string
+          ip?: string | null
+          landing_url?: string | null
+          language?: string | null
+          metadata?: Json
+          os?: string | null
+          path?: string | null
+          reason?: string | null
+          referer?: string | null
+          region?: string | null
+          request_id: string
+          risk_score?: number
+          session_id?: string | null
+          ttclid?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_id?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          visitor_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          action?: string
+          asn?: string | null
+          browser?: string | null
+          city?: string | null
+          click_id?: string | null
+          country?: string | null
+          created_at?: string
+          device_type?: string | null
+          event_name?: string
+          fbclid?: string | null
+          gclid?: string | null
+          id?: string
+          ip?: string | null
+          landing_url?: string | null
+          language?: string | null
+          metadata?: Json
+          os?: string | null
+          path?: string | null
+          reason?: string | null
+          referer?: string | null
+          region?: string | null
+          request_id?: string
+          risk_score?: number
+          session_id?: string | null
+          ttclid?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_id?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          visitor_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      traffic_rules: {
+        Row: {
+          allowed_countries: string[]
+          allowed_devices: string[]
+          allowed_os: string[]
+          block_risk_threshold: number
+          blocked_user_agents: string[]
+          challenge_risk_threshold: number
+          created_at: string
+          default_action: string
+          deny_action: string
+          enabled: boolean
+          id: string
+          name: string
+          redirect_url: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          allowed_countries?: string[]
+          allowed_devices?: string[]
+          allowed_os?: string[]
+          block_risk_threshold?: number
+          blocked_user_agents?: string[]
+          challenge_risk_threshold?: number
+          created_at?: string
+          default_action?: string
+          deny_action?: string
+          enabled?: boolean
+          id?: string
+          name?: string
+          redirect_url?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          allowed_countries?: string[]
+          allowed_devices?: string[]
+          allowed_os?: string[]
+          block_risk_threshold?: number
+          blocked_user_agents?: string[]
+          challenge_risk_threshold?: number
+          created_at?: string
+          default_action?: string
+          deny_action?: string
+          enabled?: boolean
+          id?: string
+          name?: string
+          redirect_url?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_rules_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"

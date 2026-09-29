@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tiotrack-traffic-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "kv_namespaces": [
+    { "binding": "TRAFFIC_RULES", "id": "SEU_KV_NAMESPACE_ID" }
+  ],
+  "vars": {
+    "COLLECTOR_URL": "https://SEU-TIOTRACK.com/api/traffic/collect",
+    "TRACKER_URL": "https://SEU-TIOTRACK.com/tiotrack.js",
+    "RULE_CACHE_TTL_SECONDS": "30"
+  }
+}

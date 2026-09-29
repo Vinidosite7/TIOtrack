@@ -29,7 +29,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#05080F',
+  themeColor: '#0b0d18',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -45,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png"/>
         <link rel="manifest" href="/manifest.json"/>
       </head>
-      <body style={{ margin: 0, padding: 0, height: '100%', background: '#05080F', fontFamily: 'var(--font-inter), Inter, system-ui, sans-serif' }}>
+      <body style={{ margin: 0, padding: 0, height: '100%', background: '#0b0d18', fontFamily: 'var(--font-inter, Inter), Inter, system-ui, sans-serif' }}>
         {children}
       </body>
     </html>

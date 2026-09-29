@@ -1,275 +1,236 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { motion } from 'framer-motion'
-import { RefreshCw, Link2, MousePointer, ShoppingCart, TrendingUp, Search, Target, Radio, AlertCircle, ArrowRight } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/store/workspace'
-import { SpotlightCard } from '@/components/ui/aceternity'
+import {
+  H, Panel, PanelHead, PageHeader, PeriodSegment, RefreshBtn, BarRow, Empty, MiniStat,
+  brl, num, PERIOD_LABEL, type Period,
+} from '@/components/hawk/ui'
 
-type Period  = 'hoje' | '7d' | '30d'
-type GroupBy = 'utm_source' | 'utm_campaign' | 'utm_medium'
+type GroupBy = 'utm_source' | 'utm_campaign' | 'utm_medium' | 'utm_content'
+const GROUPS: { key: GroupBy; label: string }[] = [
+  { key: 'utm_source', label: 'Origem' }, { key: 'utm_campaign', label: 'Campanha' }, { key: 'utm_medium', label: 'Meio' }, { key: 'utm_content', label: 'Criativo' },
+]
+const EV_LIMIT = 20000
+const DAYS: Record<Period, number> = { hoje: 1, '7d': 7, '30d': 30 }
+const decode = (s: string | null | undefined) => { try { return s ? decodeURIComponent(s) : null } catch { return s || null } }
+const pct = (a: number, b: number) => b > 0 ? (a / b) * 100 : 0
+const fmtPct = (n: number) => `${n.toFixed(n < 10 ? 1 : 0).replace('.', ',')}%`
 
-const T = {
-  bg: 'rgba(8,8,14,0.92)', border: 'rgba(255,255,255,0.055)',
-  text: '#dcdcf0', sub: '#8a8aaa', muted: '#4a4a6a',
-  green: '#10b981', amber: '#f59e0b', blue: '#3b82f6',
-  mono: "'JetBrains Mono', monospace", sans: "'DM Sans', sans-serif", display: "'Syne', sans-serif",
-}
+type Ev = { session_id: string | null; event_name: string; utm_source: string | null; utm_campaign: string | null; utm_medium: string | null; utm_content: string | null }
+type Conv = { id: string; valor: number; status: string; session_id: string | null; click_id: string | null; customer_name: string | null; produto: string | null; created_at: string; utm_source: string | null; utm_campaign: string | null; utm_medium: string | null; utm_content: string | null }
 
-const toBRL     = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
-const hoje      = () => new Date().toISOString().split('T')[0]
-const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0] }
-const decodeUtm = (s: string | null) => { try { return s ? decodeURIComponent(s) : null } catch { return s } }
+const isCheckout = (n: string) => /checkout|initiate|add_payment|pix/i.test(n)
+const isEngaged = (n: string) => /click|lead|scroll|view_content|telegram/i.test(n)
 
-const SOURCE_COLORS: Record<string, string> = {
-  facebook: '#1877F2', fb: '#1877F2', instagram: '#E1306C',
-  tiktok: '#60a5fa', google: '#4285F4', organic: '#64748B', whatsapp: '#25D366',
-}
-function getColor(key: string) { return SOURCE_COLORS[key.toLowerCase()] ?? '#60a5fa' }
-
-export default function UTMsPage() {
-  const { active: workspace } = useWorkspaceStore()
-  const [period, setPeriod]     = useState<Period>('7d')
-  const [groupBy, setGroupBy]   = useState<GroupBy>('utm_source')
-  const [search, setSearch]     = useState('')
-  const [isMobile, setIsMobile] = useState(false)
-  const [loading, setLoading]   = useState(true)
+export default function FunilPage() {
+  const { active } = useWorkspaceStore()
+  const [period, setPeriod] = useState<Period>('7d')
+  const [groupBy, setGroupBy] = useState<GroupBy>('utm_source')
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [data, setData]         = useState<any[]>([])
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [events, setEvents] = useState<Ev[]>([])
+  const [convs, setConvs] = useState<Conv[]>([])
+  const [open, setOpen] = useState<string | null>(null)
 
-  async function load(wid: string, p: Period) {
+  const load = useCallback(async () => {
+    if (!active?.id) return
     setLoading(true)
-    const diff = p === 'hoje' ? 1 : p === '7d' ? 7 : 30
-    const from = p === 'hoje' ? hoje() : diasAtras(diff)
-    const { data: convs } = await supabase.from('conversions').select('valor,status,utm_source,utm_campaign,utm_medium,utm_content,customer_name,created_at').eq('workspace_id', wid).gte('dia', from).lte('dia', hoje())
-    setData(convs ?? [])
+    const since = new Date(); since.setHours(0, 0, 0, 0); since.setDate(since.getDate() - (DAYS[period] - 1))
+    const [ev, cv] = await Promise.all([
+      supabase.from('traffic_events').select('session_id,event_name,utm_source,utm_campaign,utm_medium,utm_content').eq('workspace_id', active.id).eq('action', 'allow').gte('created_at', since.toISOString()).limit(EV_LIMIT),
+      supabase.from('conversions').select('id,valor,status,session_id,click_id,customer_name,produto,created_at,utm_source,utm_campaign,utm_medium,utm_content').eq('workspace_id', active.id).gte('dia', since.toISOString().slice(0, 10)).order('created_at', { ascending: false }),
+    ])
+    setEvents((ev.data || []) as Ev[])
+    setConvs((cv.data || []) as Conv[])
     setLoading(false); setRefreshing(false)
-  }
+  }, [active?.id, period])
+  useEffect(() => { load() }, [load])
 
-  useEffect(() => { if (workspace?.id) load(workspace.id, period) }, [workspace?.id, period])
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 760)
-    onResize()
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  const rows = useMemo(() => {
-    const map: Record<string, { key: string; cliques: number; vendas: number; receita: number; pendentes: number }> = {}
-    for (const r of data) {
-      const raw = r[groupBy]
-      const key = (groupBy === 'utm_campaign' ? decodeUtm(raw) : raw) ?? '(orgânico)'
-      if (!map[key]) map[key] = { key, cliques: 0, vendas: 0, receita: 0, pendentes: 0 }
-      map[key].cliques++
-      if (r.status === 'paid')    { map[key].vendas++; map[key].receita += r.valor ?? 0 }
-      if (r.status === 'pending') map[key].pendentes++
+  // ── funil por sessão ────────────────────────────────────────
+  const funnel = useMemo(() => {
+    const sess: Record<string, { n: number; engaged: boolean; checkout: boolean }> = {}
+    for (const e of events) {
+      if (!e.session_id) continue
+      const s = (sess[e.session_id] ||= { n: 0, engaged: false, checkout: false })
+      s.n++
+      if (isEngaged(e.event_name)) s.engaged = true
+      if (isCheckout(e.event_name)) { s.checkout = true; s.engaged = true }
     }
-    return Object.values(map)
-      .filter(r => !search || r.key.toLowerCase().includes(search.toLowerCase()))
-      .sort((a, b) => b.receita - a.receita)
-  }, [data, groupBy, search])
+    const list = Object.values(sess)
+    const visitors = list.length
+        const paid = convs.filter(c => c.status === 'paid')
+    const pending = convs.filter(c => c.status === 'pending')
+    // Só entra no funil a venda que casou com uma sessão rastreada — senão a etapa final passaria do topo
+    const paidInFunnel = new Set(paid.map(c => c.session_id).filter((id): id is string => !!id && !!sess[id]))
+    for (const id of paidInFunnel) { sess[id].checkout = true; sess[id].engaged = true }
+    const checkout = list.filter(s => s.checkout).length
+    const unmatched = paid.length - paid.filter(c => c.session_id && sess[c.session_id]).length
+    return {
+      stages: [
+        { label: 'Visitantes', sub: 'sessões reais', v: visitors },
+        { label: 'Engajados', sub: '2+ eventos ou clique', v: list.filter(s => s.engaged || s.n > 1).length },
+        { label: 'Checkout', sub: 'iniciaram pagamento', v: checkout },
+        { label: 'Compraram', sub: `${num(paid.length)} vendas no total · ${num(unmatched)} sem sessão`, v: paidInFunnel.size },
+      ],
+      paid, pending,
+    }
+  }, [events, convs])
 
-  const totais = {
-    cliques: rows.reduce((s, r) => s + r.cliques, 0),
-    vendas:  rows.reduce((s, r) => s + r.vendas, 0),
-    receita: rows.reduce((s, r) => s + r.receita, 0),
-  }
-  const maxReceita = rows[0]?.receita ?? 1
-  const topRow = rows[0]
-  const conversionRate = totais.cliques > 0 ? Math.round((totais.vendas / totais.cliques) * 100) : 0
-  const pendingTotal = rows.reduce((s, r) => s + r.pendentes, 0)
-  const trackingLabel = groupBy === 'utm_source' ? 'origem' : groupBy === 'utm_campaign' ? 'campanha' : 'meio'
-  const groupLabel = groupBy === 'utm_source' ? 'Source' : groupBy === 'utm_campaign' ? 'Campanha' : 'Medium'
+  // ── quebra por UTM ──────────────────────────────────────────
+  const rows = useMemo(() => {
+    const keyOf = (x: any) => decode(x[groupBy]) || '(sem UTM)'
+    const m: Record<string, { key: string; sessions: Set<string>; checkout: Set<string>; vendas: number; pend: number; receita: number; sales: Conv[] }> = {}
+    const get = (k: string) => (m[k] ||= { key: k, sessions: new Set(), checkout: new Set(), vendas: 0, pend: 0, receita: 0, sales: [] })
+    const buyers = new Set(convs.filter(c => c.status === 'paid' && c.session_id).map(c => c.session_id as string))
+    for (const e of events) {
+      if (!e.session_id) continue
+      const g = get(keyOf(e)); g.sessions.add(e.session_id)
+      if (isCheckout(e.event_name)) g.checkout.add(e.session_id)
+    }
+    for (const c of convs) {
+      const g = get(keyOf(c))
+      if (c.status === 'paid') { g.vendas++; g.receita += c.valor; g.sales.push(c) }
+      if (c.status === 'pending') g.pend++
+    }
+    const q = search.trim().toLowerCase()
+    return Object.values(m)
+      .map(g => ({ ...g, s: g.sessions.size, ck: g.checkout.size, conv: pct([...g.sessions].filter(id => buyers.has(id)).length, g.sessions.size), rps: g.sessions.size ? g.receita / g.sessions.size : 0 }))
+      .filter(g => !q || g.key.toLowerCase().includes(q))
+      .sort((a, b) => b.receita - a.receita || b.s - a.s)
+  }, [events, convs, groupBy, search])
 
-  const UtmSignal = ({ icon: Icon, label, value, tone = '#60a5fa' }: { icon: any; label: string; value: string; tone?: string }) => (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '11px 12px', borderRadius: 14, background: 'rgba(255,255,255,0.035)', border: `1px solid ${T.border}`, minWidth: 0 }}>
-      <div style={{ width: 30, height: 30, borderRadius: 10, background: `${tone}14`, border: `1px solid ${tone}24`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <Icon size={14} style={{ color: tone }}/>
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 10, color: T.muted, textTransform: 'uppercase' as const, letterSpacing: '0.07em', fontFamily: T.display, marginBottom: 2 }}>{label}</div>
-        <div style={{ fontSize: 12, color: T.text, fontWeight: 700, fontFamily: T.sans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
-      </div>
-    </div>
-  )
+  const quality = useMemo(() => {
+    const total = convs.length || 0
+    const withUtm = convs.filter(c => c.utm_source || c.utm_campaign).length
+    const withSession = convs.filter(c => c.session_id || c.click_id).length
+    return { total, withUtm: pct(withUtm, total), withSession: pct(withSession, total) }
+  }, [convs])
+
+  const maxS = Math.max(1, ...funnel.stages.map(s => s.v))
+  const groupLabel = GROUPS.find(g => g.key === groupBy)!.label
+  const maxReceita = rows[0]?.receita || 1
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#0b0f14', position: 'relative' }}>
+    <div className="shell-page">
+      <PageHeader title="Funil & UTMs" sub={`Do clique à venda paga · ${PERIOD_LABEL[period].toLowerCase()}`}
+        right={<>
+          <PeriodSegment value={period} onChange={setPeriod} />
+          <RefreshBtn spinning={refreshing} onClick={() => { setRefreshing(true); load() }} />
+        </>} />
 
-      {/* Topbar */}
-      <div style={{ minHeight: isMobile ? 132 : 58, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: isMobile ? 'stretch' : 'center', padding: isMobile ? '14px 14px' : '0 20px', gap: 10, flexShrink: 0, background: 'rgba(8,8,14,0.88)', backdropFilter: 'blur(20px)', position: 'relative', zIndex: 10, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: isMobile ? '100%' : 190 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 11, background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Link2 size={15} style={{ color: '#a78bfa' }}/>
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: T.text, letterSpacing: '-0.02em', fontFamily: T.display }}>UTMs</div>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.sans }}>de onde vem o caixa, sem adivinhar</div>
-          </div>
+      {/* Funil */}
+      <Panel style={{ marginBottom: 12 }}>
+        <PanelHead title="Funil de conversão" sub="Tráfego real (permitido) → vendas confirmadas" dot
+          right={events.length >= EV_LIMIT ? <span className="tt-badge">amostra de {num(EV_LIMIT)} eventos</span> : undefined} />
+        <div className="hk-funnel" style={{ padding: 18 }}>
+          {funnel.stages.map((s, i) => {
+            const prev = i > 0 ? funnel.stages[i - 1].v : s.v
+            return (
+              <div key={s.label} className="tt-inset" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ color: H.sub, fontSize: 12, fontWeight: 600 }}>{s.label}</span>
+                  {i > 0 && <span className="tt-chip">{fmtPct(pct(s.v, prev))}</span>}
+                </div>
+                <div className="tt-num" style={{ fontSize: 'clamp(26px, 2.6vw, 36px)', lineHeight: 1, background: 'linear-gradient(180deg,#fff,#b9bcf7)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{loading ? '—' : num(s.v)}</div>
+                <div style={{ height: 70, display: 'flex', alignItems: 'flex-end' }}>
+                  <div style={{ width: '100%', height: `${Math.max(6, (s.v / maxS) * 100)}%`, borderRadius: '6px 6px 2px 2px', background: 'linear-gradient(180deg, rgba(242,243,255,.9) 0%, rgba(126,132,220,.85) 100%)', opacity: 1 - i * 0.14, transition: 'height .6s ease' }} />
+                </div>
+                <div className="tt-cap">{s.sub}{i > 0 && ` · ${fmtPct(pct(s.v, funnel.stages[0].v))} do topo`}</div>
+              </div>
+            )
+          })}
         </div>
-        <div style={{ flex: 1 }}/>
-        {/* Search */}
-        <div style={{ position: 'relative', width: isMobile ? '100%' : 178 }}>
-          <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.muted }}/>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..."
-            style={{ height: 32, padding: '0 10px 0 28px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontSize: 11, outline: 'none', fontFamily: T.sans, width: '100%' }}/>
-        </div>
-        {/* GroupBy */}
-        <select value={groupBy} onChange={e => setGroupBy(e.target.value as GroupBy)}
-          style={{ height: 32, padding: '0 9px', background: 'rgba(10,10,18,0.8)', border: `1px solid ${T.border}`, borderRadius: 10, color: T.sub, fontSize: 11, outline: 'none', cursor: 'pointer', flex: isMobile ? 1 : 'initial' }}>
-          <option value="utm_source">Por Source</option>
-          <option value="utm_campaign">Por Campanha</option>
-          <option value="utm_medium">Por Medium</option>
-        </select>
-        {/* Período */}
-        {(['hoje', '7d', '30d'] as Period[]).map(p => (
-          <button key={p} onClick={() => setPeriod(p)}
-            style={{ height: 32, padding: '0 12px', borderRadius: 10, background: period === p ? 'rgba(59,130,246,0.12)' : 'transparent', border: `1px solid ${period === p ? 'rgba(59,130,246,0.3)' : T.border}`, color: period === p ? '#60a5fa' : T.muted, fontSize: 11, cursor: 'pointer', fontFamily: T.sans, fontWeight: period === p ? 700 : 500, transition: 'all 0.15s' }}>
-            {p === 'hoje' ? 'Hoje' : p}
-          </button>
-        ))}
-        <button onClick={() => { if (workspace?.id) { setRefreshing(true); load(workspace.id, period) } }}
-          style={{ width: 32, height: 32, borderRadius: 10, background: 'transparent', border: `1px solid ${T.border}`, color: T.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <RefreshCw size={12} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }}/>
-        </button>
-      </div>
+      </Panel>
 
-      {/* Executive read */}
-      <div style={{ padding: isMobile ? '14px' : '16px 20px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
-        <SpotlightCard style={{ padding: isMobile ? 16 : 18, borderRadius: 18, background: 'linear-gradient(135deg, rgba(96,165,250,0.10), rgba(167,139,250,0.07) 45%, rgba(16,185,129,0.06))', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.05fr 1.4fr', gap: isMobile ? 14 : 18, alignItems: 'center' }}>
-            <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 9px', borderRadius: 999, background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.22)', color: '#93c5fd', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, fontFamily: T.display, marginBottom: 10 }}>
-                <Radio size={12}/> mapa de atribuição
-              </div>
-              <div style={{ fontSize: isMobile ? 20 : 24, lineHeight: 1.02, color: T.text, fontWeight: 850, letterSpacing: '-0.04em', fontFamily: T.display, marginBottom: 7 }}>
-                {topRow ? `${topRow.key} puxa ${toBRL(topRow.receita)}` : 'UTMs prontas para mostrar o caminho do dinheiro'}
-              </div>
-              <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.55, fontFamily: T.sans, maxWidth: 560 }}>
-                Agrupe por source, campanha ou medium para descobrir qual {trackingLabel} realmente vira venda paga. Aqui a leitura é simples: evento capturado, venda confirmada e receita atribuída.
-              </div>
+      <div className="hk-split">
+        {/* Tabela UTM */}
+        <Panel>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, padding: '6px 18px 0', flexWrap: 'wrap' }}>
+            <div className="tt-tabbar no-scrollbar" style={{ borderBottom: 0 }}>
+              {GROUPS.map(g => <button key={g.key} className="tt-tab" data-active={groupBy === g.key} onClick={() => { setGroupBy(g.key); setOpen(null) }}>{g.label}</button>)}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,minmax(0,1fr))', gap: 10 }}>
-              <UtmSignal icon={Target} label={`melhor ${trackingLabel}`} value={topRow?.key ?? 'sem dados'} tone="#a78bfa"/>
-              <UtmSignal icon={ShoppingCart} label="taxa venda/evento" value={`${conversionRate}%`} tone={conversionRate > 0 ? T.green : '#60a5fa'}/>
-              <UtmSignal icon={AlertCircle} label="pendências" value={pendingTotal > 0 ? `${pendingTotal} aguardando` : 'limpo'} tone={pendingTotal > 0 ? T.amber : T.green}/>
+            <div style={{ position: 'relative', width: 240, marginBottom: 6 }}>
+              <Search size={13} style={{ position: 'absolute', left: 11, top: 12, color: H.muted }} />
+              <input className="tt-input" style={{ paddingLeft: 32 }} value={search} onChange={e => setSearch(e.target.value)} placeholder={`Buscar ${groupLabel.toLowerCase()}...`} />
             </div>
           </div>
-        </SpotlightCard>
-      </div>
-
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
-        {[
-          { l: 'Total de eventos',  v: String(totais.cliques), c: '#60a5fa', icon: MousePointer },
-          { l: 'Vendas pagas',      v: String(totais.vendas),  c: T.green,   icon: ShoppingCart },
-          { l: 'Receita atribuída', v: toBRL(totais.receita),  c: T.green,   icon: TrendingUp   },
-        ].map(({ l, v, c, icon: Icon }, i) => (
-          <div key={l} style={{ padding: isMobile ? '12px 14px' : '12px 20px', borderRight: !isMobile && i < 2 ? `1px solid ${T.border}` : 'none', borderBottom: isMobile && i < 2 ? `1px solid ${T.border}` : 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: `${c}12`, border: `1px solid ${c}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Icon size={14} style={{ color: c }}/>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: T.muted, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2, fontFamily: T.display }}>{l}</div>
-              <div style={{ fontFamily: T.display, fontSize: 18, fontWeight: 700, color: c, letterSpacing: '-0.02em' }}>{v}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Lista */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px' : '16px 20px', position: 'relative', zIndex: 1 }}>
-        {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[1,2,3,4].map(i => <div key={i} style={{ height: 64, borderRadius: 12, background: 'rgba(255,255,255,0.03)', animation: 'sk 1.4s ease-in-out infinite', backgroundSize: '200% 100%' }}/>)}
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, gap: 12, textAlign: 'center', padding: 24 }}>
-            <div style={{ width: 54, height: 54, borderRadius: 18, background: 'rgba(96,165,250,0.09)', border: '1px solid rgba(96,165,250,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Link2 size={24} style={{ color: '#60a5fa' }}/>
-            </div>
-            <div>
-              <div style={{ fontSize: 16, color: T.text, fontWeight: 800, fontFamily: T.display, marginBottom: 5 }}>
-                {search ? 'Nenhum UTM nesse filtro' : 'UTMs ainda sem dados'}
-              </div>
-              <p style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, maxWidth: 360, margin: 0 }}>
-                {search ? 'Tenta outro termo ou limpe a busca para voltar ao mapa completo.' : 'Assim que as vendas entrarem com parâmetros de campanha, essa tela mostra qual origem está trazendo caixa.'}
-              </p>
-            </div>
-            {search ? (
-              <button onClick={() => setSearch('')} style={{ height: 34, padding: '0 13px', borderRadius: 10, background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.25)', color: '#93c5fd', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                Limpar busca
-              </button>
-            ) : (
-              <button onClick={() => { window.location.href = '/integracoes' }} style={{ height: 34, padding: '0 13px', borderRadius: 10, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                Ver integrações <ArrowRight size={13}/>
-              </button>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {/* Header */}
-            {!isMobile && <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px', gap: 12, padding: '4px 16px 8px', marginBottom: 2 }}>
-              {[groupLabel, 'Eventos', 'Vendas', 'Receita'].map((h, i) => (
-                <div key={h} style={{ fontSize: 10, color: T.muted, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' as const, textAlign: i > 0 ? 'right' as const : 'left' as const, fontFamily: T.display }}>{h}</div>
-              ))}
-            </div>}
-
-            {rows.map((row, i) => {
-              const color  = getColor(row.key)
-              const pct    = maxReceita > 0 ? (row.receita / maxReceita) * 100 : 0
-              const isOpen = expanded === row.key
-              const rowData = data.filter(d => {
-                const raw = d[groupBy]
-                const k = (groupBy === 'utm_campaign' ? decodeUtm(raw) : raw) ?? '(orgânico)'
-                return k === row.key && d.status === 'paid'
-              }).slice(0, 5)
-
-              return (
-                <motion.div key={row.key} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.04 }}>
-                  <div onClick={() => setExpanded(isOpen ? null : row.key)}
-                    style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${isOpen ? `${color}25` : T.border}`, borderRadius: 12, overflow: 'hidden', cursor: 'pointer', transition: 'border-color 0.15s' }}>
-                    <div style={{ padding: isMobile ? '13px' : '12px 16px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 80px 80px 100px', gap: isMobile ? 10 : 12, alignItems: 'center', marginBottom: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }}/>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: T.sans }}>{row.key}</span>
-                          {row.pendentes > 0 && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 20, background: 'rgba(245,158,11,0.1)', color: T.amber, fontFamily: T.mono, flexShrink: 0 }}>{row.pendentes} pend.</span>}
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'subgrid', gridColumn: isMobile ? 'auto' : 'span 3', gap: 12 }}>
-                          <div style={{ textAlign: isMobile ? 'left' : 'right', fontFamily: T.mono, fontSize: 13, color: T.sub }}><span style={{ display: isMobile ? 'block' : 'none', fontSize: 9, color: T.muted, fontFamily: T.display, letterSpacing: '0.07em', textTransform: 'uppercase' as const }}>Eventos</span>{row.cliques}</div>
-                          <div style={{ textAlign: isMobile ? 'left' : 'right', fontFamily: T.mono, fontSize: 13, color: T.sub }}><span style={{ display: isMobile ? 'block' : 'none', fontSize: 9, color: T.muted, fontFamily: T.display, letterSpacing: '0.07em', textTransform: 'uppercase' as const }}>Vendas</span>{row.vendas}</div>
-                          <div style={{ textAlign: isMobile ? 'left' : 'right', fontFamily: T.display, fontSize: 14, fontWeight: 700, color: row.receita > 0 ? T.green : T.muted }}><span style={{ display: isMobile ? 'block' : 'none', fontSize: 9, color: T.muted, fontFamily: T.display, letterSpacing: '0.07em', textTransform: 'uppercase' as const }}>Receita</span>{toBRL(row.receita)}</div>
-                        </div>
-                      </div>
-                      <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 99, overflow: 'hidden' }}>
-                        <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, delay: i * 0.05 }}
-                          style={{ height: '100%', background: color, borderRadius: 99 }}/>
-                      </div>
-                    </div>
-                    {isOpen && rowData.length > 0 && (
-                      <div style={{ borderTop: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.015)' }}>
-                        {rowData.map((d: any, j: number) => (
-                          <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '10px 13px' : '8px 16px', borderBottom: j < rowData.length - 1 ? `1px solid rgba(255,255,255,0.04)` : 'none', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-                            <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.green, flexShrink: 0 }}/>
-                            <span style={{ fontSize: 12, color: T.sub, flex: 1, fontFamily: T.sans }}>{d.customer_name ?? 'Cliente'}</span>
-                            <span style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: isMobile ? '100%' : 180 }}>{decodeUtm(d.utm_campaign) ?? '—'}</span>
-                            <span style={{ fontSize: 12, fontFamily: T.mono, fontWeight: 600, color: T.green, flexShrink: 0 }}>{toBRL(d.valor ?? 0)}</span>
+          <div style={{ height: 1, background: H.line }} />
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tt-table" style={{ minWidth: 820 }}>
+              <thead><tr>
+                <th style={{ width: 28 }} />
+                {[groupLabel, 'Sessões', 'Checkout', 'Vendas', 'Conv.', 'R$/sessão', 'Receita'].map((h, i) => <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {rows.map(r => {
+                  const isOpen = open === r.key
+                  return (
+                    <Fragment key={r.key}>
+                      <tr onClick={() => setOpen(isOpen ? null : r.key)} style={{ cursor: 'pointer', background: isOpen ? 'rgba(163,167,242,.05)' : undefined }}>
+                        <td style={{ paddingRight: 0, color: H.muted }}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                        <td style={{ maxWidth: 300 }}>
+                          <div style={{ color: r.key === '(sem UTM)' ? H.muted : H.text, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.key}</div>
+                          <div style={{ height: 3, borderRadius: 99, background: 'rgba(163,167,242,.10)', marginTop: 7, overflow: 'hidden', maxWidth: 220 }}>
+                            <div style={{ width: `${(r.receita / maxReceita) * 100}%`, height: '100%', background: 'linear-gradient(90deg, rgba(163,167,242,.4), #dcdefd)' }} />
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )
-            })}
+                        </td>
+                        <td style={{ textAlign: 'right', color: H.sub }}>{num(r.s)}</td>
+                        <td style={{ textAlign: 'right', color: H.sub }}>{num(r.ck)}</td>
+                        <td style={{ textAlign: 'right', color: H.text }}>{num(r.vendas)}{r.pend > 0 && <span style={{ color: H.amber, fontSize: 10.5, marginLeft: 5 }}>+{r.pend}</span>}</td>
+                        <td style={{ textAlign: 'right', color: r.conv >= 2 ? H.green : r.conv > 0 ? H.sub : H.muted, fontWeight: 600 }}>{r.s ? fmtPct(r.conv) : '—'}</td>
+                        <td style={{ textAlign: 'right', color: H.sub }}>{r.s ? brl(r.rps, 2) : '—'}</td>
+                        <td style={{ textAlign: 'right', color: H.text, fontWeight: 700 }}>{brl(r.receita)}</td>
+                      </tr>
+                      {isOpen && (
+                        <tr><td colSpan={8} style={{ padding: 0, background: 'rgba(9,11,22,.35)' }}>
+                          {r.sales.length === 0 ? <Empty pad={18}>Nenhuma venda paga atribuída.</Empty> : r.sales.slice(0, 6).map(c => (
+                            <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 1fr auto', gap: 12, padding: '9px 18px 9px 46px', borderBottom: `1px solid ${H.lineSoft}`, fontSize: 12 }}>
+                              <span className="tt-mono" style={{ color: H.muted, fontSize: 11 }}>{new Date(c.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                              <span style={{ color: H.sub }}>{c.customer_name || 'Cliente'}</span>
+                              <span style={{ color: H.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.produto || '—'}</span>
+                              <span style={{ color: H.text, fontWeight: 600 }}>{brl(c.valor, 2)}</span>
+                            </div>
+                          ))}
+                        </td></tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-        )}
-      </div>
+          {!loading && rows.length === 0 && <Empty pad={40}>{search ? 'Nada nesse filtro.' : 'Sem tráfego nem vendas com UTM nesse período.'}</Empty>}
+        </Panel>
 
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
+        {/* Qualidade da atribuição */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Panel>
+            <PanelHead title="Qualidade da atribuição" sub={`${num(quality.total)} conversões no período`} />
+            <div style={{ padding: '6px 18px 16px' }}>
+              <BarRow label="Vendas com UTM" value={fmtPct(quality.withUtm)} ratio={quality.withUtm / 100} sub="utm_source ou utm_campaign preenchido" />
+              <BarRow label="Vendas ligadas a sessão" value={fmtPct(quality.withSession)} ratio={quality.withSession / 100} sub="session_id ou click_id (sck) casado" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+                <MiniStat label="Pagas" value={num(funnel.paid.length)} tone="good" />
+                <MiniStat label="PIX pendente" value={num(funnel.pending.length)} tone={funnel.pending.length ? 'warn' : undefined} />
+              </div>
+            </div>
+          </Panel>
+          <Panel>
+            <PanelHead title={`Top ${groupLabel.toLowerCase()} por R$/sessão`} sub="mínimo de 20 sessões" />
+            <div style={{ padding: '6px 18px 14px' }}>
+              {(() => {
+                const top = rows.filter(r => r.s >= 20).sort((a, b) => b.rps - a.rps).slice(0, 5)
+                if (!top.length) return <Empty pad={24}>Volume insuficiente ainda.</Empty>
+                return top.map(r => <BarRow key={r.key} label={r.key} sub={`${num(r.s)} sessões · ${fmtPct(r.conv)} conv.`} value={brl(r.rps, 2)} ratio={r.rps / (top[0].rps || 1)} />)
+              })()}
+            </div>
+          </Panel>
+        </div>
+      </div>
     </div>
   )
 }

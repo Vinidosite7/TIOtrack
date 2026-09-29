@@ -20,10 +20,10 @@ export function AcernityFonts() {
       ::-webkit-scrollbar { width: 3px; height: 3px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb {
-        background: rgba(124,110,247,0.25);
+        background: rgba(133,139,230,0.25);
         border-radius: 99px;
       }
-      ::-webkit-scrollbar-thumb:hover { background: rgba(124,110,247,0.5); }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(133,139,230,0.5); }
 
       /* Date picker dark */
       input[type="date"]::-webkit-calendar-picker-indicator {
@@ -164,7 +164,7 @@ export function BackgroundGrid({ children }: { children: React.ReactNode }) {
       <div style={{
         position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
         backgroundImage:
-          'radial-gradient(circle, rgba(124,110,247,0.10) 1px, transparent 1px)',
+          'radial-gradient(circle, rgba(133,139,230,0.10) 1px, transparent 1px)',
         backgroundSize: '24px 24px',
         /* máscara radial: visível no centro, some nas bordas */
         maskImage:
@@ -198,7 +198,7 @@ export function FloatingOrbs() {
         position: 'absolute', top: -180, left: -100,
         width: 580, height: 580, borderRadius: '50%',
         background:
-          'radial-gradient(circle at 40% 40%, rgba(124,110,247,0.09) 0%, transparent 60%)',
+          'radial-gradient(circle at 40% 40%, rgba(133,139,230,0.09) 0%, transparent 60%)',
         animation: 'orb-drift-a 18s ease-in-out infinite',
         filter: 'blur(1px)',
       }} />
@@ -239,7 +239,7 @@ export function SpotlightCard({
   children,
   className = '',
   style = {},
-  spotlightColor = 'rgba(124,110,247,0.13)',
+  spotlightColor = 'rgba(133,139,230,0.13)',
 }: SpotlightCardProps) {
   return (
     <div
@@ -387,7 +387,7 @@ export function StatBar({
 
 // ─── LiveDot ────────────────────────────────────────────────────
 // Dot pulsante para o header (re-exportado para manter imports limpos).
-export function LiveDot({ color = '#34d399' }: { color?: string }) {
+export function LiveDot({ color = '#74d3ab' }: { color?: string }) {
   return (
     <span style={{
       position: 'relative', display: 'inline-flex',
@@ -431,7 +431,7 @@ export function GlowCorner({
 export function GlowingEffect({
   children,
   className = '',
-  color = '#7c6ef7',
+  color = '#858be6',
   spread = 36,
   blur = 14,
   disabled = false,
@@ -498,7 +498,7 @@ interface SparkleParticle {
   id: number; x: number; y: number; size: number; color: string; delay: number; duration: number
 }
 
-const SPARKLE_COLORS = ['#7c6ef7', '#a78bfa', '#34d399', '#fbbf24', '#f0e6ff']
+const SPARKLE_COLORS = ['#858be6', '#b9bcf7', '#74d3ab', '#fbbf24', '#f0e6ff']
 
 function generateSparkle(): SparkleParticle {
   return {
@@ -643,7 +643,7 @@ export function EncryptedText({
 export function ColourfulText({
   children,
   className = '',
-  colors = ['#7c6ef7', '#a78bfa', '#34d399', '#22d3ee', '#fbbf24', '#f87171', '#a06ef7'],
+  colors = ['#858be6', '#b9bcf7', '#74d3ab', '#22d3ee', '#fbbf24', '#f87171', '#a06ef7'],
   speed = 4,
 }: {
   children: React.ReactNode
@@ -704,7 +704,7 @@ export function BackgroundBeamsSection({
               left: b.left,
               width: b.width,
               height: '140%',
-              background: `linear-gradient(180deg, transparent 0%, rgba(124,110,247,${b.opacity}) 40%, rgba(124,110,247,${b.opacity * 0.6}) 60%, transparent 100%)`,
+              background: `linear-gradient(180deg, transparent 0%, rgba(133,139,230,${b.opacity}) 40%, rgba(133,139,230,${b.opacity * 0.6}) 60%, transparent 100%)`,
               transform: `rotate(${b.angle}deg)`,
               transformOrigin: 'top center',
               animation: `beam-move ${b.duration}s ease-in-out ${b.delay}s infinite`,
@@ -724,7 +724,7 @@ export function BackgroundBeamsSection({
 export function RippleBackground({
   children,
   className = '',
-  color = 'rgba(124,110,247,0.12)',
+  color = 'rgba(133,139,230,0.12)',
   rings = 5,
 }: {
   children: React.ReactNode
@@ -821,7 +821,7 @@ export function BentoItem({
         aria-hidden
         style={{
           position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: 'linear-gradient(105deg, transparent 0%, rgba(124,110,247,0.035) 50%, transparent 100%)',
+          background: 'linear-gradient(105deg, transparent 0%, rgba(133,139,230,0.035) 50%, transparent 100%)',
           backgroundSize: '200% 100%',
           animation: 'bento-shimmer 4s ease infinite',
           borderRadius: 'inherit',
@@ -855,13 +855,13 @@ export function NoiseButton({
       style={{
         cursor: 'pointer',
         background: variant === 'primary'
-          ? 'linear-gradient(135deg, #7c6ef7, #a06ef7)'
+          ? 'linear-gradient(135deg, #858be6, #a06ef7)'
           : 'rgba(255,255,255,0.04)',
         border: variant === 'primary'
           ? '1px solid rgba(255,255,255,0.12)'
           : '1px solid rgba(255,255,255,0.08)',
         boxShadow: variant === 'primary'
-          ? '0 0 28px rgba(124,110,247,0.4), inset 0 1px 0 rgba(255,255,255,0.15)'
+          ? '0 0 28px rgba(133,139,230,0.4), inset 0 1px 0 rgba(255,255,255,0.15)'
           : 'none',
         color: 'white',
         ...style,
@@ -913,8 +913,8 @@ export function FloatingDock({
         padding: '10px 14px',
         borderRadius: 24,
         background: 'rgba(10,10,18,0.92)',
-        border: '1px solid rgba(124,110,247,0.18)',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(124,110,247,0.06)',
+        border: '1px solid rgba(133,139,230,0.18)',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(133,139,230,0.06)',
         backdropFilter: 'blur(20px)',
       }}
     >
@@ -942,10 +942,10 @@ export function FloatingDock({
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: item.active
-                  ? 'linear-gradient(135deg, rgba(124,110,247,0.3), rgba(160,110,247,0.2))'
+                  ? 'linear-gradient(135deg, rgba(133,139,230,0.3), rgba(160,110,247,0.2))'
                   : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${item.active ? 'rgba(124,110,247,0.35)' : 'rgba(255,255,255,0.07)'}`,
-                boxShadow: item.active ? '0 0 16px rgba(124,110,247,0.25)' : 'none',
+                border: `1px solid ${item.active ? 'rgba(133,139,230,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                boxShadow: item.active ? '0 0 16px rgba(133,139,230,0.25)' : 'none',
                 color: item.active ? (item.color || '#9d8fff') : '#4a4a6a',
                 transition: 'background 0.15s, border-color 0.15s, color 0.15s',
                 cursor: 'pointer',
@@ -994,8 +994,8 @@ export function FloatingDock({
                 width: 4,
                 height: 4,
                 borderRadius: '50%',
-                background: item.color || '#7c6ef7',
-                boxShadow: `0 0 6px ${item.color || '#7c6ef7'}`,
+                background: item.color || '#858be6',
+                boxShadow: `0 0 6px ${item.color || '#858be6'}`,
               }} />
             )}
           </a>
@@ -1032,8 +1032,8 @@ export function BossLoader({
         <div style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
           border: '2px solid transparent',
-          borderTopColor: '#7c6ef7',
-          borderRightColor: 'rgba(124,110,247,0.3)',
+          borderTopColor: '#858be6',
+          borderRightColor: 'rgba(133,139,230,0.3)',
           animation: 'loader-spin 1s linear infinite',
         }} />
         {/* Middle ring */}
@@ -1047,9 +1047,9 @@ export function BossLoader({
         {/* Center logo */}
         <div style={{
           position: 'absolute', inset: 16, borderRadius: 8,
-          background: 'linear-gradient(135deg, #7c6ef7, #a06ef7)',
+          background: 'linear-gradient(135deg, #858be6, #a06ef7)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 0 20px rgba(124,110,247,0.5)',
+          boxShadow: '0 0 20px rgba(133,139,230,0.5)',
           animation: 'loader-pulse 2s ease-in-out infinite',
         }}>
           <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 10, color: 'white', letterSpacing: '-0.02em' }}>BF</span>
@@ -1077,7 +1077,7 @@ export function CardSpotlight({
   children,
   className = '',
   style = {},
-  color = '#7c6ef7',
+  color = '#858be6',
 }: {
   children: React.ReactNode
   className?: string
@@ -1148,8 +1148,8 @@ export function CardSpotlight({
 // Uso: substitui BackgroundGrid em páginas específicas.
 export function DottedGlowBackground({
   children,
-  glowColor = 'rgba(124,110,247,0.15)',
-  dotColor = 'rgba(124,110,247,0.12)',
+  glowColor = 'rgba(133,139,230,0.15)',
+  dotColor = 'rgba(133,139,230,0.12)',
 }: {
   children: React.ReactNode
   glowColor?: string
@@ -1182,7 +1182,7 @@ export function DottedGlowBackground({
 // Efeito de luz cônica vindo do topo — usar no hero do login
 export function LampEffect({
   children,
-  color = '#3b82f6',
+  color = '#a3a7f2',
 }: {
   children: React.ReactNode
   color?: string

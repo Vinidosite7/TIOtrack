@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "edge:deploy": "cd workers/traffic-edge && npx wrangler deploy",
+    "edge:dev": "cd workers/traffic-edge && npx wrangler dev",
+    "edge:tail": "cd workers/traffic-edge && npx wrangler tail"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -14,15 +17,21 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
+    "@types/d3-geo": "^3.1.1",
+    "@types/topojson-client": "^3.1.5",
     "@types/uuid": "^10.0.0",
+    "d3-geo": "^3.1.1",
     "framer-motion": "^12.42.0",
+    "i18n-iso-countries": "^7.14.0",
     "lucide-react": "^1.21.0",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.9.0",
+    "topojson-client": "^3.1.0",
     "uuid": "^14.0.1",
     "web-push": "^3.6.7",
+    "world-atlas": "^2.0.2",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

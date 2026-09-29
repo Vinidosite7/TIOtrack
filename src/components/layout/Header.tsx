@@ -1,295 +1,186 @@
 'use client'
 
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ChevronDown, Check, LogOut,
-  Settings, User, Menu, Zap,
-  Activity, ShoppingCart, Plug, TrendingUp,
+  ChevronDown, Menu, Plug, Settings, LogOut, User, LayoutGrid, TrendingUp,
+  ShoppingCart, Filter, ShieldCheck, RadioTower, FileText, Check, Package,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/store/workspace'
-
-const popStyle: React.CSSProperties = {
-  background: '#0f1623',
-  border: '1px solid rgba(148,163,184,0.10)',
-  boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
-  borderRadius: 12,
-}
 
 const popAnim = {
   initial: { opacity: 0, y: -6, scale: 0.98 },
   animate: { opacity: 1, y: 0, scale: 1 },
-  exit:    { opacity: 0, y: -6, scale: 0.98 },
-  transition: { duration: 0.14, ease: [0.16, 1, 0.3, 1] as const },
+  exit: { opacity: 0, y: -6, scale: 0.98 },
+  transition: { duration: .14, ease: [0.16, 1, 0.3, 1] as const },
 }
 
-const toBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
-const hoje = () => new Date().toISOString().split('T')[0]
+export const NAV = [
+  { href: '/overview', label: 'Visão geral', icon: LayoutGrid },
+  { href: '/produtos', label: 'Produtos', icon: Package },
+  { href: '/campanhas', label: 'Campanhas', icon: TrendingUp },
+  { href: '/vendas', label: 'Vendas', icon: ShoppingCart },
+  { href: '/utms', label: 'Funil', icon: Filter },
+  { href: '/traffic', label: 'Tráfego', icon: ShieldCheck, live: true },
+  { href: '/signal', label: 'Signal', icon: RadioTower },
+  { href: '/relatorios', label: 'Relatórios', icon: FileText },
+]
 
-function HeaderSignal({ icon: Icon, label, value, color }: {
-  icon: React.ElementType
-  label: string
-  value: string
-  color: string
-}) {
+export function Logo() {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 7,
-      height: 30, padding: '0 10px',
-      borderRadius: 9,
-      background: 'rgba(255,255,255,0.025)',
-      border: '1px solid rgba(148,163,184,0.08)',
-      minWidth: 0,
-    }}>
-      <Icon size={13} color={color}/>
-      <span style={{ fontSize: 10, color: '#64748b', fontFamily: "'DM Sans', sans-serif" }}>{label}</span>
-      <span style={{ fontSize: 11, color: '#e2e8f0', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap' }}>{value}</span>
-    </div>
-  )
-}
-
-function QuickAction({ icon: Icon, label, onClick }: {
-  icon: React.ElementType
-  label: string
-  onClick: () => void
-}) {
-  const [hov, setHov] = useState(false)
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        width: 32, height: 32,
-        borderRadius: 9,
-        background: hov ? 'rgba(59,130,246,0.10)' : 'rgba(255,255,255,0.025)',
-        border: `1px solid ${hov ? 'rgba(59,130,246,0.22)' : 'rgba(148,163,184,0.08)'}`,
-        color: hov ? '#60a5fa' : '#64748b',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer',
-        transition: 'all 150ms ease',
-      }}>
-      <Icon size={14}/>
-    </button>
+    <Link href="/overview" style={{ display: 'inline-flex', alignItems: 'center', gap: 9, flexShrink: 0 }} aria-label="Tiotrack">
+      <svg width="26" height="22" viewBox="0 0 26 22" aria-hidden>
+        <defs>
+          <linearGradient id="tt-logo" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#eef0ff" />
+            <stop offset="100%" stopColor="#8c91ea" />
+          </linearGradient>
+        </defs>
+        <path d="M1 3h24l-4 5h-6l-3 13-4.5-3L10 8H5z" fill="url(#tt-logo)" />
+      </svg>
+      <span style={{ fontSize: 15, fontWeight: 900, letterSpacing: '.02em', fontStyle: 'italic', color: '#eceefb', lineHeight: 1 }}>
+        TIO<span style={{ color: '#a3a7f2', fontWeight: 600 }}>TRACK</span>
+      </span>
+    </Link>
   )
 }
 
 export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { active: workspace, list: workspaces, setActive } = useWorkspaceStore()
   const [user, setUser] = useState<any>(null)
-  const [showWsMenu, setShowWsMenu]   = useState(false)
+  const [showWsMenu, setShowWsMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
-  const [ops, setOps] = useState({ receitaHoje: 0, pendentes: 0, fontes: 0, loading: true })
-  const wsRef   = useRef<HTMLDivElement>(null)
+  const wsRef = useRef<HTMLDivElement>(null)
   const userRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) setUser(user)
-    }
-    load()
-  }, [])
+  useEffect(() => { supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null)) }, [])
 
   useEffect(() => {
-    if (!workspace?.id) return
-    async function loadOps() {
-      setOps(o => ({ ...o, loading: true }))
-      const h = hoje()
-      const [{ data: vendas }, { data: bcs }, { data: meta }] = await Promise.all([
-        supabase.from('conversions').select('valor,status').eq('workspace_id', workspace!.id).eq('dia', h),
-        supabase.from('bc_configs').select('id').eq('workspace_id', workspace!.id),
-        (supabase as any).from('meta_connections').select('id').eq('workspace_id', workspace!.id),
-      ])
-      const receitaHoje = (vendas ?? []).filter((v: any) => v.status === 'paid').reduce((s: number, v: any) => s + (v.valor ?? 0), 0)
-      const pendentes = (vendas ?? []).filter((v: any) => v.status === 'pending').length
-      const fontes = ((bcs ?? []).length > 0 ? 1 : 0) + (((meta as any)?.length ?? 0) > 0 ? 1 : 0)
-      setOps({ receitaHoje, pendentes, fontes, loading: false })
-    }
-    loadOps()
-  }, [workspace?.id])
-
-  useEffect(() => {
-    function h(e: MouseEvent) {
-      if (wsRef.current   && !wsRef.current.contains(e.target as Node))   setShowWsMenu(false)
+    function handleClickOutside(e: MouseEvent) {
+      if (wsRef.current && !wsRef.current.contains(e.target as Node)) setShowWsMenu(false)
       if (userRef.current && !userRef.current.contains(e.target as Node)) setShowUserMenu(false)
     }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
-  const initials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+  const userName = useMemo(() => user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User', [user])
+  const initials = useMemo(() => userName.split(/[\s._-]+/).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase(), [userName])
 
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
   }
 
-  function UserAvatar({ size = 'sm' }: { size?: 'sm' | 'md' }) {
-    const d = size === 'sm' ? 30 : 38
-    return (
-      <div style={{
-        width: d, height: d, borderRadius: size === 'sm' ? 8 : 10,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: '#3b82f6',
-        flexShrink: 0,
-      }}>
-        <span style={{ fontSize: size === 'sm' ? 11 : 14, fontWeight: 700, color: '#fff', fontFamily: "'Syne', sans-serif" }}>{initials}</span>
-      </div>
-    )
-  }
-
-  const hBtn = (open: boolean): React.CSSProperties => ({
-    background: open ? 'rgba(255,255,255,0.05)' : 'transparent',
-    border: `1px solid ${open ? 'rgba(148,163,184,0.12)' : 'transparent'}`,
-    transition: 'background 0.15s ease',
-    borderRadius: 8, cursor: 'pointer',
-  })
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
   return (
     <header style={{
-      height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0 12px', flexShrink: 0, position: 'relative',
-      background: '#0e1520',
-      borderBottom: '1px solid rgba(148,163,184,0.08)',
-      zIndex: 50, overflow: 'visible',
+      position: 'sticky', top: 0, zIndex: 20,
+      background: 'rgba(11,13,24,.78)',
+      borderBottom: '1px solid rgba(170,176,235,.07)',
+      backdropFilter: 'blur(14px) saturate(140%)',
+      WebkitBackdropFilter: 'blur(14px) saturate(140%)',
     }}>
-      {/* LEFT */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {/* Hamburger mobile */}
-        <motion.button whileTap={{ scale: 0.92 }} onClick={onMenuClick}
-          style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(148,163,184,0.10)', color: '#94a3b8', cursor: 'pointer' }}
-          className="mobile-only">
-          <Menu size={16}/>
-        </motion.button>
+      <div style={{ width: 'min(100%, 1680px)', margin: '0 auto', height: 60, padding: '0 clamp(16px,2.2vw,32px)', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <button className="tt-icon-btn hk-topnav-burger" style={{ display: 'none' }} onClick={onMenuClick} aria-label="Abrir menu"><Menu size={16} /></button>
+        <Logo />
 
-        {/* Workspace selector */}
-        <div ref={wsRef} style={{ position: 'relative', zIndex: 100 }}>
-          <motion.button whileTap={{ scale: 0.97 }}
-            onClick={() => setShowWsMenu(v => !v)}
-            style={{ ...hBtn(showWsMenu), display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px' }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Zap size={11} style={{ color: '#60a5fa' }}/>
-            </div>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', fontFamily: "'Syne', sans-serif", maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {workspace?.nome || 'Workspace'}
-            </span>
-            <motion.div animate={{ rotate: showWsMenu ? 180 : 0 }} transition={{ duration: 0.2 }}>
-              <ChevronDown size={11} style={{ color: '#475569' }}/>
-            </motion.div>
-          </motion.button>
+        <nav className="hk-topnav-links no-scrollbar" style={{ flex: 1, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: 3, borderRadius: 12, background: 'rgba(20,24,41,.7)', border: '1px solid rgba(170,176,235,.08)' }}>
+            {NAV.map(item => {
+              const on = isActive(item.href)
+              const Icon = item.icon
+              return (
+                <Link key={item.href} href={item.href} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7, height: 32, padding: '0 12px', borderRadius: 9,
+                  fontSize: 12.5, fontWeight: on ? 700 : 500, whiteSpace: 'nowrap',
+                  color: on ? '#11142a' : '#9ea3c2',
+                  background: on ? 'linear-gradient(180deg, #c3c6fa 0%, #999eee 100%)' : 'transparent',
+                  boxShadow: on ? '0 6px 18px rgba(133,139,230,.28), inset 0 1px 0 rgba(255,255,255,.4)' : 'none',
+                  transition: 'color .15s ease, background .15s ease',
+                }}>
+                  <Icon size={14} strokeWidth={on ? 2.4 : 2} />
+                  {item.label}
+                  {item.live && <span className="tt-status-dot hk-live-dot" style={{ width: 5, height: 5, background: on ? '#11142a' : '#74d3ab' }} />}
+                </Link>
+              )
+            })}
+          </div>
+        </nav>
 
-          <AnimatePresence>
-            {showWsMenu && workspaces.length > 0 && (
-              <motion.div {...popAnim} style={{ ...popStyle, position: 'absolute', left: 0, top: 46, minWidth: 200, padding: 6 }}>
-                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#475569', padding: '4px 10px 6px', fontFamily: "'Syne', sans-serif" }}>Workspaces</p>
-                {workspaces.map(ws => (
-                  <button key={ws.id} onClick={() => { setActive(ws); setShowWsMenu(false) }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: workspace?.id === ws.id ? 'rgba(59,130,246,0.1)' : 'transparent', border: 'none', cursor: 'pointer', transition: 'background 0.1s', textAlign: 'left' }}
-                    onMouseEnter={e => { if (workspace?.id !== ws.id) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
-                    onMouseLeave={e => { if (workspace?.id !== ws.id) e.currentTarget.style.background = 'transparent' }}>
-                    <span style={{ fontSize: 13, color: '#cbd5e1', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'DM Sans', sans-serif" }}>{ws.nome}</span>
-                    {workspace?.id === ws.id && <Check size={12} style={{ color: '#60a5fa' }}/>}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <div ref={wsRef} style={{ position: 'relative' }}>
+            <button className="tt-btn" onClick={() => setShowWsMenu(v => !v)} style={{ gap: 8, maxWidth: 200 }}>
+              <span className="tt-status-dot" style={{ background: '#74d3ab', boxShadow: '0 0 8px #74d3ab' }} />
+              <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{workspace?.nome || 'Workspace'}</span>
+              <ChevronDown size={14} color="#9ea3c2" />
+            </button>
+            <AnimatePresence>
+              {showWsMenu && (
+                <motion.div {...popAnim} className="tt-card" style={{ position: 'absolute', right: 0, top: 44, width: 250, padding: 6, zIndex: 40 }}>
+                  <div className="tt-cap" style={{ padding: '6px 10px 8px' }}>Workspaces</div>
+                  {workspaces.map(ws => {
+                    const on = ws.id === workspace?.id
+                    return (
+                      <button key={ws.id} onClick={() => { setActive(ws); setShowWsMenu(false) }} style={{
+                        width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                        minHeight: 36, padding: '0 10px', borderRadius: 8, fontSize: 13,
+                        background: on ? 'rgba(163,167,242,.12)' : 'transparent', color: on ? '#eceefb' : '#9ea3c2',
+                      }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ws.nome}</span>
+                        {on && <Check size={14} color="#a3a7f2" />}
+                      </button>
+                    )
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-      {/* CENTER */}
-      <div className="header-center" style={{
-        position: 'absolute',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        maxWidth: '48vw',
-        overflow: 'hidden',
-      }}>
-        <HeaderSignal icon={Activity} label="Hoje" value={ops.loading ? '—' : toBRL(ops.receitaHoje)} color="#34d399"/>
-        <HeaderSignal icon={ShoppingCart} label="PIX" value={ops.loading ? '—' : String(ops.pendentes)} color="#fbbf24"/>
-        <HeaderSignal icon={Plug} label="Fontes" value={ops.loading ? '—' : `${ops.fontes}/2`} color={ops.fontes > 0 ? '#60a5fa' : '#64748b'}/>
-      </div>
+          <Link href="/integracoes" className="tt-icon-btn desktop-only" title="Integrações" aria-label="Integrações" style={{ display: undefined }}><Plug size={15} /></Link>
+          <Link href="/configuracoes" className="tt-icon-btn desktop-only" title="Configurações" aria-label="Configurações"><Settings size={15} /></Link>
 
-      {/* RIGHT */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <div className="desktop-only" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <QuickAction icon={TrendingUp} label="Abrir campanhas" onClick={() => router.push('/campanhas')}/>
-          <QuickAction icon={ShoppingCart} label="Abrir vendas" onClick={() => router.push('/vendas')}/>
-          <QuickAction icon={Plug} label="Abrir integrações" onClick={() => router.push('/integracoes')}/>
-        </div>
-
-        {/* Separator */}
-        <div style={{ width: 1, height: 20, background: 'rgba(148,163,184,0.10)', margin: '0 2px' }}/>
-
-        {/* User */}
-        <div ref={userRef} style={{ position: 'relative', zIndex: 100 }}>
-          <motion.button whileTap={{ scale: 0.95 }}
-            onClick={() => setShowUserMenu(v => !v)}
-            style={{ ...hBtn(showUserMenu), display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 4px 4px' }}>
-            <UserAvatar size="sm"/>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', fontFamily: "'Syne', sans-serif" }} className="desktop-only">
-              {userName.split(' ')[0]}
-            </span>
-            <ChevronDown size={10} style={{ color: '#475569' }} className="desktop-only"/>
-          </motion.button>
-
-          <AnimatePresence>
-            {showUserMenu && (
-              <motion.div {...popAnim} style={{ ...popStyle, position: 'absolute', right: 0, top: 46, width: 200, padding: 6 }}>
-                {/* User card */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px 10px', marginBottom: 6, borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(148,163,184,0.08)' }}>
-                  <UserAvatar size="md"/>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', fontFamily: "'Syne', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</p>
-                    <p style={{ fontSize: 11, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</p>
+          <div ref={userRef} style={{ position: 'relative' }}>
+            <button onClick={() => setShowUserMenu(v => !v)} aria-label="Conta" style={{
+              width: 36, height: 36, borderRadius: 999, display: 'grid', placeItems: 'center',
+              background: 'radial-gradient(circle at 35% 30%, #dcdefd 0%, #8c91ea 70%)', color: '#11142a', fontSize: 12, fontWeight: 800,
+              boxShadow: '0 0 0 2px rgba(11,13,24,1), 0 0 0 3px rgba(163,167,242,.35)',
+            }}>{initials}</button>
+            <AnimatePresence>
+              {showUserMenu && (
+                <motion.div {...popAnim} className="tt-card" style={{ position: 'absolute', right: 0, top: 46, width: 230, padding: 6, zIndex: 40 }}>
+                  <div style={{ padding: '10px 10px 12px', borderBottom: '1px solid rgba(170,176,235,.08)', marginBottom: 6 }}>
+                    <div style={{ fontWeight: 700, color: '#eceefb' }}>{userName}</div>
+                    <div style={{ marginTop: 3, color: '#666c8e', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
                   </div>
-                </div>
-
-                {[{ icon: Settings, label: 'Configurações', href: '/configuracoes' }, { icon: User, label: 'Perfil', href: '/configuracoes' }].map(({ icon: Icon, label, href }) => (
-                  <button key={label} onClick={() => { setShowUserMenu(false); router.push(href) }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'transparent', border: 'none', color: '#94a3b8', fontSize: 13, cursor: 'pointer', transition: 'all 0.1s', fontFamily: "'DM Sans', sans-serif", textAlign: 'left' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#d0d0e0' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8a8aaa' }}>
-                    <Icon size={13}/> {label}
+                  {[
+                    { label: 'Perfil', icon: User, href: '/configuracoes' },
+                    { label: 'Integrações', icon: Plug, href: '/integracoes' },
+                    { label: 'Configurações', icon: Settings, href: '/configuracoes' },
+                  ].map(item => {
+                    const Icon = item.icon
+                    return (
+                      <button key={item.label} onClick={() => { setShowUserMenu(false); router.push(item.href) }} style={{ width: '100%', minHeight: 36, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px', color: '#9ea3c2', fontSize: 13 }}>
+                        <Icon size={14} /> {item.label}
+                      </button>
+                    )
+                  })}
+                  <div style={{ height: 1, background: 'rgba(170,176,235,.08)', margin: '6px 4px' }} />
+                  <button onClick={handleLogout} style={{ width: '100%', minHeight: 36, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px', color: '#f0899b', fontSize: 13 }}>
+                    <LogOut size={14} /> Sair
                   </button>
-                ))}
-
-                <div style={{ height: 1, background: 'rgba(148,163,184,0.08)', margin: '4px 4px' }}/>
-
-                <button onClick={handleLogout}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'transparent', border: 'none', color: '#f87171', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'background 0.1s', fontFamily: "'DM Sans', sans-serif", textAlign: 'left' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(248,113,113,0.08)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <LogOut size={13}/> Sair
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
-
-      <style>{`
-        .mobile-only  { display: none; }
-        .desktop-only { display: flex; }
-        .header-center { display: flex; }
-        @media (max-width: 1120px) {
-          .header-center { display: none !important; }
-        }
-        @media (max-width: 768px) {
-          .mobile-only  { display: flex !important; }
-          .desktop-only { display: none !important; }
-        }
-      `}</style>
     </header>
   )
 }

@@ -1,72 +1,30 @@
 'use client'
 
-import { SidebarDesktop, SidebarProvider, useSidebar } from '@/components/layout/Sidebar'
-import { Header } from '@/components/layout/Header'
-import BottomNav from '@/components/layout/BottomNav'
-import SwRegister from '@/components/layout/SwRegister'
-import WorkspaceProvider from '@/components/layout/WorkspaceProvider'
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import WorkspaceProvider from '@/components/layout/WorkspaceProvider'
+import SwRegister from '@/components/layout/SwRegister'
+import BottomNav from '@/components/layout/BottomNav'
+import { Header } from '@/components/layout/Header'
+import { SidebarDesktop, SidebarProvider, useSidebar } from '@/components/layout/Sidebar'
 
-// ─── Grain filter SVG global ──────────────────────────────────
-function GrainFilter() {
-  return (
-    <svg style={{ position: 'fixed', width: 0, height: 0, pointerEvents: 'none', zIndex: -1 }} aria-hidden>
-      <defs>
-        <filter id="tt-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="4" stitchTiles="stitch"/>
-          <feColorMatrix type="saturate" values="0"/>
-          <feComponentTransfer><feFuncA type="linear" slope="0.045"/></feComponentTransfer>
-          <feBlend in="SourceGraphic" mode="overlay"/>
-        </filter>
-      </defs>
-    </svg>
-  )
-}
 
-// ─── Page background — orbs + dot grid ───────────────────────
-function PageBackground() {
-  return (
-    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: -180, left: -60, width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(16,185,129,0.055) 0%, transparent 70%)', animation: 'ttOrbA 12s ease-in-out infinite', filter: 'blur(1px)' }}/>
-      <div style={{ position: 'absolute', bottom: -200, right: -100, width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,0.05) 0%, transparent 70%)', animation: 'ttOrbB 18s ease-in-out infinite reverse', filter: 'blur(1px)' }}/>
-      <div style={{ position: 'absolute', top: '30%', right: '5%', width: 340, height: 340, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,110,247,0.035) 0%, transparent 70%)', animation: 'ttOrbA 28s ease-in-out infinite' }}/>
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.07) 1px, transparent 1px)', backgroundSize: '28px 28px', maskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%)' }}/>
-      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 130% 100% at 50% -10%, transparent 35%, rgba(11,15,20,0.65) 100%)' }}/>
-      <style>{`
-        @keyframes ttOrbA { 0%,100%{transform:translate(0,0) scale(1)} 30%{transform:translate(22px,-28px) scale(1.07)} 60%{transform:translate(-14px,18px) scale(0.95)} }
-        @keyframes ttOrbB { 0%,100%{transform:translate(0,0) scale(1)} 40%{transform:translate(-24px,22px) scale(1.09)} 70%{transform:translate(16px,-12px) scale(0.94)} }
-      `}</style>
-    </div>
-  )
-}
-
-// ─── Mobile Sidebar Drawer ────────────────────────────────────
 function MobileSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { setCollapsed } = useSidebar()
 
-  useEffect(() => {
-    if (open) setCollapsed(false)
-    else setCollapsed(true)
-  }, [open])
+  useEffect(() => { setCollapsed(!open ? false : false) }, [open, setCollapsed])
 
   return (
     <AnimatePresence>
       {open && (
         <>
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}
-            onClick={onClose}
-          />
-          <motion.div
-            initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }}
-            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-            style={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 50, boxShadow: '8px 0 40px rgba(0,0,0,0.5)' }}>
-            <SidebarDesktop/>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(5,6,14,.72)', backdropFilter: 'blur(8px)' }} onClick={onClose} />
+          <motion.div initial={{ x: -320 }} animate={{ x: 0 }} exit={{ x: -320 }} transition={{ duration: .24, ease: [0.16, 1, 0.3, 1] }}
+            style={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 50, boxShadow: '0 24px 80px rgba(0,0,0,.55)' }}>
+            <SidebarDesktop />
           </motion.div>
         </>
       )}
@@ -74,7 +32,6 @@ function MobileSidebar({ open, onClose }: { open: boolean; onClose: () => void }
   )
 }
 
-// ─── Inner layout ─────────────────────────────────────────────
 function DashboardInner({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -85,7 +42,9 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/login'); return }
       setAuthChecked(true)
-    } catch { router.replace('/login') }
+    } catch {
+      router.replace('/login')
+    }
   }, [router])
 
   useEffect(() => {
@@ -94,54 +53,42 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
       if (event === 'SIGNED_OUT' || (!session && event !== 'INITIAL_SESSION')) router.replace('/login')
     })
     return () => subscription.unsubscribe()
-  }, [checkAuth])
+  }, [checkAuth, router])
 
   if (!authChecked) {
     return (
-      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0b0f14' }}>
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid rgba(59,130,246,0.25)', borderTopColor: '#3b82f6', animation: 'spin 0.8s linear infinite' }}/>
-          <p style={{ fontSize: 12, color: '#475569', fontFamily: "'DM Sans', sans-serif" }}>Carregando...</p>
+      <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
+        <div className="tt-card" style={{ width: 220, padding: 24, textAlign: 'center' }}>
+          <div style={{ width: 38, height: 38, margin: '0 auto 14px', borderRadius: '50%', border: '2px solid rgba(163,167,242,.18)', borderTopColor: '#a3a7f2', animation: 'spin .9s linear infinite' }} />
+          <div style={{ fontFamily: "var(--font-inter, Inter), Inter, sans-serif", fontSize: 18, fontWeight: 800, color: '#eceefb' }}>Carregando</div>
+          <div style={{ marginTop: 6, color: '#666c8e', fontSize: 12 }}>Preparando a central Tiotrack...</div>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        </motion.div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#0b0f14', position: 'relative', zIndex: 1 }}>
-      {/* Sidebar desktop */}
-      <div className="desktop-sidebar">
-        <SidebarDesktop/>
-      </div>
+    <div style={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
 
-      {/* Mobile drawer */}
-      <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)}/>
-
-      {/* Main */}
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-        <Header onMenuClick={() => setMobileOpen(true)}/>
-        <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', position: 'relative', zIndex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
+        <Header onMenuClick={() => setMobileOpen(true)} />
+        <main className="main-content" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
           {children}
         </main>
       </div>
 
-      {/* Bottom nav mobile */}
-      <div className="mobile-bottom-nav">
-        <BottomNav/>
-      </div>
+      <div className="mobile-bottom-nav"><BottomNav /></div>
     </div>
   )
 }
 
-// ─── Layout wrapper ───────────────────────────────────────────
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceProvider>
       <SidebarProvider>
-        <SwRegister/>
-        <GrainFilter/>
-        <PageBackground/>
+        <SwRegister />
         <DashboardInner>{children}</DashboardInner>
       </SidebarProvider>
     </WorkspaceProvider>

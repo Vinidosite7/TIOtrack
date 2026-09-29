@@ -2,16 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Plus, Trash2, Eye, EyeOff, RefreshCw,
-  CheckCircle, XCircle, AlertCircle,
-  Wifi, WifiOff, DollarSign, Zap,
-  ExternalLink, ChevronDown, ChevronRight,
-  Activity, ShieldCheck, Clock3, ArrowRight,
+  Plus, Trash2, Eye, EyeOff, RefreshCw, CheckCircle, XCircle, AlertCircle, Wifi, ChevronDown,
+  Activity, ShieldCheck, Clock3, Wallet,
 } from 'lucide-react'
-import { T } from '@/lib/tokens'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/store/workspace'
-import { GridBg, sharedStyles } from '@/components/ui/shared'
+import { H, Panel, KpiCard, PageHeader, StatusPill, Empty } from '@/components/hawk/ui'
+import { TikTokEventsApiCard } from '@/components/integrations/TikTokEventsApiCard'
 
 // ── Tipos ──────────────────────────────────────────────────────
 type AdvAccount = { id: string; advertiser_id: string; nome: string | null; balance: number | null; currency: string | null; status: string | null }
@@ -28,7 +25,6 @@ function timeAgo(s: string) {
   if (m < 1) return 'agora'; if (m < 60) return `${m}min`; if (m < 1440) return `${Math.floor(m/60)}h`; return `${Math.floor(m/1440)}d`
 }
 
-// ── SVG logos inline ───────────────────────────────────────────
 function TikTokLogo({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -38,190 +34,82 @@ function TikTokLogo({ size = 20 }: { size?: number }) {
 }
 function MetaLogo({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="#1877F2">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
       <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
     </svg>
   )
 }
 
-// ── Platform card ──────────────────────────────────────────────
-function PlatformCard({
-  logo, name, description, status, statusLabel,
-  stats, color, children, onExpand, expanded,
-}: {
-  logo: React.ReactNode
-  name: string
-  description: string
-  status: 'connected' | 'disconnected' | 'partial'
-  statusLabel: string
-  stats?: { label: string; value: string }[]
-  color: string
-  children?: React.ReactNode
-  onExpand?: () => void
-  expanded?: boolean
-}) {
-  const STATUS_CFG = {
-    connected:    { color: T.green,  bg: 'rgba(16,185,129,0.1)',  dot: T.green  },
-    disconnected: { color: T.text3,  bg: 'rgba(100,116,139,0.1)', dot: T.text3  },
-    partial:      { color: T.yellow, bg: 'rgba(245,158,11,0.1)',  dot: T.yellow },
-  }
-  const s = STATUS_CFG[status]
-
-  return (
-    <div style={{
-      background: T.bgSurface,
-      border: `1px solid ${status === 'connected' ? `${color}25` : T.border}`,
-      borderRadius: 14, overflow: 'hidden',
-      boxShadow: status === 'connected' ? `0 0 0 1px ${color}10, 0 4px 24px ${color}08` : 'none',
-      transition: 'all 200ms ease',
-    }}>
-      {/* Linha de cor no topo */}
-      {status === 'connected' && (
-        <div style={{ height: 2, background: `linear-gradient(90deg, ${color}, ${color}40)` }} />
-      )}
-
-      <div style={{ padding: '16px 18px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
-          {/* Logo */}
-          <div style={{
-            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-            background: `${color}12`,
-            border: `1px solid ${color}25`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            {logo}
-          </div>
-
-          {/* Info */}
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>{name}</span>
-              <span style={{
-                fontSize: 10, padding: '2px 8px', borderRadius: 20,
-                background: s.bg, color: s.color,
-                display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500,
-              }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: s.dot, boxShadow: status === 'connected' ? `0 0 4px ${s.dot}` : 'none' }} />
-                {statusLabel}
-              </span>
-            </div>
-            <p style={{ fontSize: 12, color: T.text3, lineHeight: 1.5 }}>{description}</p>
-          </div>
-
-          {/* Expand */}
-          {onExpand && status === 'connected' && (
-            <button onClick={onExpand} style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.text3, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <ChevronDown size={13} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
-            </button>
-          )}
-        </div>
-
-        {/* Stats */}
-        {stats && stats.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {stats.map(st => (
-              <div key={st.label} style={{ background: T.bgRaised, border: `1px solid ${T.border}`, borderRadius: 7, padding: '5px 10px' }}>
-                <div style={{ fontSize: 9, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{st.label}</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600, color: T.text1 }}>{st.value}</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Actions / content */}
-        {children}
-      </div>
-
-      {/* Contas expandidas */}
-      {expanded && (
-        <div style={{ borderTop: `1px solid ${T.borderSub}` }}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return <label style={{ display: 'block' }}><span style={{ display: 'block', fontSize: 11.5, color: H.sub, marginBottom: 6 }}>{label}{hint && <span style={{ color: H.muted }}> · {hint}</span>}</span>{children}</label>
 }
-
-// ── Input helpers ──────────────────────────────────────────────
 function FInput({ value, onChange, placeholder, disabled }: { value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean }) {
-  return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
-    style={{ width: '100%', height: 36, padding: '0 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, borderRadius: 8, color: T.text1, fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: "'DM Sans', sans-serif" }} />
+  return <input className="tt-input" type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled} />
 }
 function FSecret({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const [show, setShow] = useState(false)
   return (
     <div style={{ position: 'relative' }}>
-      <input type={show ? 'text' : 'password'} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        style={{ width: '100%', height: 36, padding: '0 36px 0 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, borderRadius: 8, color: T.text1, fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: "'DM Sans', sans-serif" }} />
-      <button onClick={() => setShow(s => !s)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: T.text3, background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
+      <input className="tt-input" type={show ? 'text' : 'password'} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={{ paddingRight: 36 }} />
+      <button onClick={() => setShow(s => !s)} aria-label={show ? 'Ocultar' : 'Mostrar'} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: H.muted, display: 'flex' }}>
         {show ? <EyeOff size={13} /> : <Eye size={13} />}
       </button>
     </div>
   )
 }
+function TestResult({ state, msg }: { state: string; msg: string }) {
+  if (!msg) return null
+  const ok = state === 'ok'
+  return <div className="tt-mono" style={{ padding: '8px 10px', borderRadius: 8, fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, background: ok ? 'rgba(116,211,171,.07)' : 'rgba(240,137,155,.07)', border: `1px solid ${ok ? 'rgba(116,211,171,.2)' : 'rgba(240,137,155,.2)'}`, color: ok ? H.green : H.red }}>{ok ? <CheckCircle size={11} /> : <XCircle size={11} />}{msg}</div>
+}
 
-// ── Accounts list ──────────────────────────────────────────────
 function AccountRow({ nome, id, balance, currency, status, warn }: { nome: string; id: string; balance: number | null; currency?: string | null; status: string; warn: boolean }) {
+  const activeAcc = status === 'ACTIVE' || status === '1' || status === 'STATUS_ENABLE'
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 18px', borderBottom: `1px solid ${T.borderSub}` }}>
-      <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: status === 'ACTIVE' ? T.green : T.text3, boxShadow: status === 'ACTIVE' ? `0 0 5px ${T.green}` : 'none' }} />
-      <span style={{ fontSize: 12, color: T.text2, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
-      <span style={{ fontSize: 10, color: T.text3, fontFamily: "'JetBrains Mono', monospace" }}>#{id.slice(-6)}</span>
-      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600, color: warn ? T.yellow : T.text1 }}>
-        {balance !== null ? toBRL(balance, currency) : '—'}
-      </span>
-      {warn && <AlertCircle size={12} style={{ color: T.yellow }} />}
+    <div style={{ display: 'grid', gridTemplateColumns: '10px minmax(0,1fr) auto auto', alignItems: 'center', gap: 10, padding: '9px 18px 9px 30px', borderBottom: `1px solid ${H.lineSoft}` }}>
+      <span className="tt-status-dot" style={{ width: 6, height: 6, background: activeAcc ? H.green : H.muted }} />
+      <span style={{ fontSize: 12.5, color: H.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome} <span className="tt-mono" style={{ fontSize: 10.5, color: H.muted }}>#{id.slice(-6)}</span></span>
+      <span className="tt-num" style={{ fontSize: 13, color: warn ? H.amber : H.text }}>{balance !== null ? toBRL(balance, currency) : '—'}</span>
+      {warn ? <span title="Saldo baixo"><AlertCircle size={12} color={H.amber} /></span> : <span style={{ width: 12 }} />}
     </div>
   )
 }
 
-function HealthPill({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      height: 24, padding: '0 9px', borderRadius: 999,
-      background: ok ? 'rgba(16,185,129,0.10)' : 'rgba(245,158,11,0.10)',
-      border: `1px solid ${ok ? 'rgba(16,185,129,0.22)' : 'rgba(245,158,11,0.22)'}`,
-      color: ok ? T.green : T.yellow,
-      fontSize: 11, fontWeight: 600,
-    }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: ok ? T.green : T.yellow, boxShadow: `0 0 5px ${ok ? T.green : T.yellow}` }}/>
-      {label}
-    </span>
-  )
-}
-
-function CommandMetric({ icon: Icon, label, value, detail, color }: {
-  icon: React.ElementType
-  label: string
-  value: string
-  detail: string
-  color: string
+function SourceCard({ logo, name, desc, status, statusLabel, stats, expanded, onExpand, actions, form, children }: {
+  logo: React.ReactNode; name: string; desc: string; status: 'connected' | 'partial' | 'disconnected'; statusLabel: string
+  stats?: { label: string; value: string; warn?: boolean }[]; expanded?: boolean; onExpand?: () => void; actions: React.ReactNode; form?: React.ReactNode; children?: React.ReactNode
 }) {
   return (
-    <div style={{
-      padding: 14, borderRadius: 12,
-      background: 'rgba(255,255,255,0.025)',
-      border: `1px solid ${T.border}`,
-      minWidth: 0,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}12`, border: `1px solid ${color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon size={13} color={color}/>
+    <Panel>
+      <div style={{ padding: '16px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 12, flexShrink: 0, display: 'grid', placeItems: 'center', color: '#f4f5ff', background: 'radial-gradient(circle at 35% 30%, rgba(220,222,253,.30), rgba(133,139,230,.45) 55%, rgba(75,80,130,.55))', border: '1px solid rgba(220,222,253,.2)' }}>{logo}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span className="tt-h">{name}</span>
+              <StatusPill tone={status === 'connected' ? 'good' : status === 'partial' ? 'warn' : 'neutral'}>{statusLabel}</StatusPill>
+            </div>
+            <p style={{ fontSize: 12, color: H.muted, marginTop: 4, lineHeight: 1.5 }}>{desc}</p>
+          </div>
+          {onExpand && <button className="tt-icon-btn" style={{ width: 30, height: 30 }} onClick={onExpand} aria-label="Expandir contas"><ChevronDown size={14} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .16s' }} /></button>}
         </div>
-        <span style={{ fontSize: 10, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>{label}</span>
+        {stats && (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stats.length}, minmax(0,1fr))`, gap: 8, marginTop: 14 }}>
+            {stats.map(s => <div key={s.label} className="tt-inset" style={{ padding: '9px 12px' }}><div style={{ fontSize: 11, color: H.muted }}>{s.label}</div><div className="tt-num" style={{ fontSize: 15, marginTop: 3, color: s.warn ? H.amber : H.text }}>{s.value}</div></div>)}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>{actions}</div>
       </div>
-      <p style={{ fontSize: 22, lineHeight: 1, color: T.text1, fontFamily: "'Syne', sans-serif", fontWeight: 800, marginBottom: 6 }}>{value}</p>
-      <p style={{ fontSize: 12, color: T.text3, lineHeight: 1.45 }}>{detail}</p>
-    </div>
+      {form && <div style={{ borderTop: `1px solid ${H.lineSoft}`, padding: '14px 18px', background: 'rgba(9,11,22,.35)', display: 'grid', gap: 10 }}>{form}</div>}
+      {children}
+    </Panel>
   )
 }
 
 // ── Page ───────────────────────────────────────────────────────
 export default function IntegracoesPage() {
   const { active: workspace } = useWorkspaceStore()
-  const [isMobile, setIsMobile] = useState(false)
+  
 
   const [bcs, setBcs]               = useState<BC[]>([])
   const [metaConns, setMetaConns]   = useState<MetaConn[]>([])
@@ -246,11 +134,6 @@ export default function IntegracoesPage() {
 
   function showToast(type: 'ok'|'err', msg: string) { setToast({ type, msg }); setTimeout(() => setToast(null), 3500) }
 
-  useEffect(() => {
-    const fn = () => setIsMobile(window.innerWidth < 820)
-    fn(); window.addEventListener('resize', fn)
-    return () => window.removeEventListener('resize', fn)
-  }, [])
 
   const load = useCallback(async (wid: string) => {
     setLoading(true)
@@ -301,8 +184,8 @@ export default function IntegracoesPage() {
 
   function handleConnectMeta() {
     if (!workspace?.id) return
-    const appId = '1830454530968970'
-    const redir = encodeURIComponent(`${window.location.origin}/api/auth/meta/callback`)
+    const appId = process.env.NEXT_PUBLIC_META_APP_ID || '1830454530968970'
+    const redir = encodeURIComponent(`${window.location.origin}/api/meta/callback`)
     const scope = 'ads_read,ads_management,business_management,read_insights'
     window.location.href = `https://www.facebook.com/dialog/oauth?client_id=${appId}&redirect_uri=${redir}&scope=${scope}&state=${workspace.id}&response_type=code&auth_type=rerequest`
   }
@@ -381,351 +264,134 @@ export default function IntegracoesPage() {
     { label: 'Saldo total', value: toBRL(totalMeta) },
   ] : undefined
 
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: T.bgBase, position: 'relative' }}>
-      <GridBg />
+    <div className="shell-page">
+      <PageHeader title="Integrações" sub="Conecte as fontes que alimentam gasto, saldo e campanhas"
+        right={<StatusPill tone={integrationWarnings > 0 ? 'warn' : activeSources > 0 ? 'good' : 'neutral'}>{integrationWarnings > 0 ? `${integrationWarnings} ponto${integrationWarnings > 1 ? 's' : ''} de atenção` : activeSources > 0 ? 'Operacional' : 'Configuração pendente'}</StatusPill>} />
 
-      {/* Topbar */}
-      <div style={{ minHeight: 54, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: isMobile ? '10px 14px' : '0 20px', flexShrink: 0, background: 'rgba(5,8,16,0.85)', backdropFilter: 'blur(12px)', position: 'relative', zIndex: 10 }}>
-        <div>
-          <span style={{ fontSize: 16, fontWeight: 800, color: T.text1, fontFamily: "'Syne', sans-serif", letterSpacing: '-0.02em' }}>Integrações</span>
-          <p style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>Conecte as fontes que alimentam ROAS, saldo e campanhas.</p>
+      {toast && (
+        <div role="status" style={{ position: 'fixed', right: 20, top: 76, zIndex: 60, borderRadius: 10, padding: '10px 14px', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8, background: '#161a2c', boxShadow: '0 14px 40px rgba(0,0,0,.45)', border: `1px solid ${toast.type === 'ok' ? 'rgba(116,211,171,.3)' : 'rgba(240,137,155,.3)'}`, color: toast.type === 'ok' ? H.green : H.red }}>
+          {toast.type === 'ok' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}{toast.msg}
         </div>
-        <HealthPill ok={integrationWarnings === 0 && activeSources > 0} label={integrationWarnings > 0 ? `${integrationWarnings} atenção` : activeSources > 0 ? 'Operacional' : 'Configuração pendente'}/>
+      )}
+
+      <div style={{ marginBottom: 12 }}>
+        <TikTokEventsApiCard />
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', zIndex: 1 }}>
+      <div className="tt-grid-4" style={{ marginBottom: 12, gap: 12 }}>
+        <KpiCard icon={Activity} label="Fontes ativas" value={`${activeSources}/3`} foot="TikTok · Meta · Kwai" progress={activationPct / 100} loading={loading} />
+        <KpiCard icon={ShieldCheck} label="Contas monitoradas" value={String(connectedAccounts)} foot={`${tkContas} TikTok · ${metaAccs.length} Meta`} progress={connectedAccounts ? 1 : 0} loading={loading} />
+        <KpiCard icon={Wallet} label="Saldo total" value={toBRL(totalTk + totalMeta)} foot={integrationWarnings ? 'tem conta com saldo baixo' : 'saldos ok'} progress={integrationWarnings ? 0.3 : 1} loading={loading} />
+        <KpiCard icon={Clock3} label="Última sincronização" value={lastSync ? timeAgo(lastSync) : '—'} foot={lastSync ? new Date(lastSync).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'sincronize uma fonte'} progress={lastSync ? Math.max(0.05, 1 - Math.min(1, (Date.now() - new Date(lastSync).getTime()) / 86400000)) : 0} loading={loading} />
+      </div>
 
-        {/* Toast */}
-        {toast && (
-          <div style={{ borderRadius: 8, padding: '9px 14px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, background: toast.type === 'ok' ? 'rgba(16,185,129,0.06)' : 'rgba(244,63,94,0.06)', border: `1px solid ${toast.type === 'ok' ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.2)'}`, color: toast.type === 'ok' ? T.green : T.red }}>
-            {toast.type === 'ok' ? <CheckCircle size={13} /> : <AlertCircle size={13} />}{toast.msg}
-          </div>
-        )}
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'minmax(280px, 1.05fr) repeat(3, minmax(0, 0.75fr))',
-          gap: 12,
-          alignItems: 'stretch',
-        }}>
-          <div style={{
-            padding: 18,
-            borderRadius: 16,
-            background: 'linear-gradient(145deg, rgba(59,130,246,0.13), rgba(16,185,129,0.06) 55%, rgba(15,22,35,0.22))',
-            border: `1px solid ${T.border}`,
-            minHeight: 150,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}>
-            <div>
-              <p style={{ fontSize: 10, color: T.accent, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, marginBottom: 10 }}>Mapa de ativação</p>
-              <h2 style={{ color: T.text1, fontFamily: "'Syne', sans-serif", fontSize: 22, lineHeight: 1.12, marginBottom: 8, letterSpacing: '-0.02em' }}>
-                O TioTrack fica forte quando tráfego e vendas entram no mesmo lugar.
-              </h2>
-              <p style={{ color: T.text3, fontSize: 12.5, lineHeight: 1.55 }}>
-                TikTok e Meta já estão no trilho principal. Kwai entra como próximo canal planejado para mídia de vídeo curto.
-              </p>
-            </div>
-            <div style={{ marginTop: 18 }}>
-              <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                <div style={{ width: `${activationPct}%`, height: '100%', borderRadius: 99, background: activeSources > 0 ? T.green : T.accent, boxShadow: `0 0 12px ${activeSources > 0 ? T.green : T.accent}66` }}/>
-              </div>
-              <p style={{ fontSize: 11, color: T.text3, marginTop: 7 }}>{activeSources}/3 fontes de mídia no mapa</p>
-            </div>
-          </div>
-
-          <CommandMetric icon={Activity} label="Fontes ativas" value={`${activeSources}`} detail="TikTok e Meta conectados contam aqui." color={T.green}/>
-          <CommandMetric icon={ShieldCheck} label="Contas monitoradas" value={`${connectedAccounts}`} detail="Contas com saldo/status entrando no painel." color={T.accent}/>
-          <CommandMetric icon={Clock3} label="Última sync" value={lastSync ? timeAgo(lastSync) : '—'} detail={lastSync ? 'dados atualizados recentemente' : 'sincronize uma fonte para iniciar'} color={T.yellow}/>
-        </div>
-
-        {/* Título seção */}
-        <div>
-          <p style={{ fontSize: 11, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 12 }}>Fontes de tráfego</p>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-
-            {/* ── TikTok Ads ── */}
-            <div style={{ background: T.bgSurface, border: `1px solid ${tkStatus === 'connected' ? 'rgba(255,255,255,0.12)' : T.border}`, borderRadius: 14, overflow: 'hidden', boxShadow: tkStatus === 'connected' ? '0 4px 24px rgba(0,0,0,0.3)' : 'none' }}>
-              {tkStatus === 'connected' && <div style={{ height: 2, background: 'linear-gradient(90deg, #fff, rgba(255,255,255,0.2))' }} />}
-              <div style={{ padding: '18px 18px 14px' }}>
-                {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <TikTokLogo size={22} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>TikTok Ads</span>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: tkStatus === 'connected' ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', color: tkStatus === 'connected' ? T.green : T.text3, display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: tkStatus === 'connected' ? T.green : T.text3, boxShadow: tkStatus === 'connected' ? `0 0 4px ${T.green}` : 'none' }} />
-                        {tkStatus === 'connected' ? `${bcs.length} BC${bcs.length > 1 ? 's' : ''} ativa${bcs.length > 1 ? 's' : ''}` : 'Não conectado'}
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 12, color: T.text3 }}>Sincronize campanhas, adsets e criativos do TikTok Ads.</p>
-                  </div>
-                  {bcs.length > 0 && (
-                    <button onClick={() => setExpandTk(e => !e)} style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.text3, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                      <ChevronDown size={13} style={{ transform: expandTk ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
-                    </button>
-                  )}
-                </div>
-
-                {/* Stats */}
-                {tkStats && (
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-                    {tkStats.map(st => (
-                      <div key={st.label} style={{ background: T.bgRaised, border: `1px solid ${T.border}`, borderRadius: 7, padding: '5px 10px' }}>
-                        <div style={{ fontSize: 9, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{st.label}</div>
-                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600, color: warnTk ? T.yellow : T.text1 }}>{st.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Botões */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setShowTkForm(s => !s)} style={{ flex: 1, height: 34, borderRadius: 8, background: showTkForm ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)', border: `1px solid ${T.border}`, color: T.text1, fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', transition: 'all 160ms' }}>
-                    <Plus size={13} />{showTkForm ? 'Cancelar' : 'Adicionar BC'}
-                  </button>
-                  {bcs.length > 0 && bcs.map(bc => (
-                    <button key={bc.id} onClick={() => handleSyncBc(bc)} disabled={syncingBc === bc.id} title={`Sync ${bc.apelido}`} style={{ height: 34, padding: '0 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.text3, fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-                      <RefreshCw size={12} style={{ animation: syncingBc === bc.id ? 'spin 1s linear infinite' : 'none' }} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Form nova BC */}
-              {showTkForm && (
-                <div style={{ borderTop: `1px solid ${T.borderSub}`, padding: '14px 18px', background: T.bgRaised }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                    <div><label style={{ fontSize: 11, color: T.text2, display: 'block', marginBottom: 5 }}>Apelido</label><FInput value={form.apelido} onChange={v => setForm(f => ({ ...f, apelido: v }))} placeholder="Ex: BC Principal" /></div>
-                    <div><label style={{ fontSize: 11, color: T.text2, display: 'block', marginBottom: 5 }}>BC ID</label><FInput value={form.bc_id} onChange={v => setForm(f => ({ ...f, bc_id: v }))} placeholder="Ex: 7123456789" /></div>
-                  </div>
-                  <div style={{ marginBottom: 10 }}><label style={{ fontSize: 11, color: T.text2, display: 'block', marginBottom: 5 }}>Access Token</label><FSecret value={form.access_token} onChange={v => setForm(f => ({ ...f, access_token: v }))} placeholder="Cole o access token" /></div>
-                  <div style={{ marginBottom: 12 }}><label style={{ fontSize: 11, color: T.text2, display: 'block', marginBottom: 5 }}>Proxy URL <span style={{ color: T.text3 }}>(opcional)</span></label><FInput value={form.proxy_url} onChange={v => setForm(f => ({ ...f, proxy_url: v }))} placeholder="http://user:pass@ip:porta" /></div>
-                  {testMsg && (
-                    <div style={{ marginBottom: 10, padding: '7px 10px', borderRadius: 6, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", background: testState === 'ok' ? 'rgba(16,185,129,0.06)' : 'rgba(244,63,94,0.06)', border: `1px solid ${testState === 'ok' ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.2)'}`, color: testState === 'ok' ? T.green : T.red, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {testState === 'ok' ? <CheckCircle size={11} /> : <XCircle size={11} />}{testMsg}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={handleTest} disabled={testState === 'testing'} style={{ height: 32, padding: '0 14px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.text2, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <Wifi size={12} />{testState === 'testing' ? 'Testando...' : testState === 'ok' ? 'OK ✓' : 'Testar'}
-                    </button>
-                    <button onClick={handleSaveBc} disabled={saving} style={{ height: 32, padding: '0 16px', borderRadius: 7, background: T.accent, border: 'none', color: '#fff', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
-                      {saving ? 'Salvando...' : 'Salvar BC'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Lista BCs expandida */}
-              {expandTk && bcs.length > 0 && (
-                <div style={{ borderTop: `1px solid ${T.borderSub}` }}>
-                  {bcs.map(bc => (
-                    <div key={bc.id}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px', background: T.bgRaised, borderBottom: `1px solid ${T.borderSub}` }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: bc.ativo ? T.green : T.text3, boxShadow: bc.ativo ? `0 0 5px ${T.green}` : 'none' }} />
-                        <span style={{ fontSize: 12, fontWeight: 500, color: T.text1 }}>{bc.apelido}</span>
-                        <span style={{ fontSize: 10, color: T.text3, fontFamily: "'JetBrains Mono', monospace" }}>BC {bc.bc_id}</span>
-                        <div style={{ flex: 1 }} />
-                        {bc.last_sync && <span style={{ fontSize: 10, color: T.text3 }}>sync {timeAgo(bc.last_sync)}</span>}
-                        <button onClick={() => handleDeleteBc(bc.id)} style={{ width: 24, height: 24, borderRadius: 5, background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.15)', color: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                      {bc.advertiser_accounts.map(adv => (
-                        <AccountRow key={adv.id} nome={adv.nome ?? `#${adv.advertiser_id}`} id={adv.advertiser_id} balance={adv.balance} currency={adv.currency} status={adv.status ?? 'ACTIVE'} warn={(adv.balance ?? 0) < 100} />
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* ── Meta Ads ── */}
-            <div style={{ background: T.bgSurface, border: `1px solid ${metaStatus === 'connected' ? 'rgba(24,119,242,0.3)' : T.border}`, borderRadius: 14, overflow: 'hidden', boxShadow: metaStatus === 'connected' ? '0 4px 24px rgba(24,119,242,0.08)' : 'none' }}>
-              {metaStatus === 'connected' && <div style={{ height: 2, background: 'linear-gradient(90deg, #1877F2, rgba(24,119,242,0.3))' }} />}
-              <div style={{ padding: '18px 18px 14px' }}>
-                {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(24,119,242,0.1)', border: '1px solid rgba(24,119,242,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <MetaLogo size={22} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>Meta Ads</span>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: metaStatus === 'connected' ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', color: metaStatus === 'connected' ? T.green : T.text3, display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: metaStatus === 'connected' ? T.green : T.text3, boxShadow: metaStatus === 'connected' ? `0 0 4px ${T.green}` : 'none' }} />
-                        {metaStatus === 'connected' ? `${metaConns.length} conta${metaConns.length > 1 ? 's' : ''} ativa${metaConns.length > 1 ? 's' : ''}` : 'Não conectado'}
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 12, color: T.text3 }}>Conecte sua Business Manager e sincronize campanhas do Facebook e Instagram Ads.</p>
-                  </div>
-                  {metaConns.length > 0 && (
-                    <button onClick={() => setExpandMeta(e => !e)} style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.text3, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                      <ChevronDown size={13} style={{ transform: expandMeta ? 'rotate(180deg)' : 'none', transition: 'transform 160ms' }} />
-                    </button>
-                  )}
-                </div>
-
-                {/* Stats */}
-                {metaStats && (
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-                    {metaStats.map(st => (
-                      <div key={st.label} style={{ background: T.bgRaised, border: `1px solid ${T.border}`, borderRadius: 7, padding: '5px 10px' }}>
-                        <div style={{ fontSize: 9, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{st.label}</div>
-                        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600, color: warnMeta ? T.yellow : T.text1 }}>{st.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Botão conectar / form */}
-                {metaConns.length === 0 && (
-                  <>
-                    <button onClick={() => setShowMetaForm(s => !s)} style={{
-                      width: '100%', height: 38, borderRadius: 8,
-                      background: showMetaForm ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg, #1877F2 0%, #0C5CC7 100%)',
-                      border: showMetaForm ? `1px solid ${T.border}` : 'none',
-                      color: showMetaForm ? T.text2 : '#fff', fontSize: 13, fontWeight: 600,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      cursor: 'pointer', boxShadow: showMetaForm ? 'none' : '0 4px 14px rgba(24,119,242,0.35)',
-                    }}>
-                      <MetaLogo size={16} />
-                      {showMetaForm ? 'Cancelar' : 'Adicionar conta Meta'}
-                    </button>
-
-                    {showMetaForm && (
-                      <div style={{ marginTop: 10, background: T.bgRaised, border: `1px solid rgba(24,119,242,0.2)`, borderRadius: 10, padding: '14px 16px' }}>
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ fontSize: 11, color: T.text2, display: 'block', marginBottom: 5 }}>Apelido (opcional)</label>
-                          <FInput value={metaApelido} onChange={setMetaApelido} placeholder="Ex: BM Principal" />
-                        </div>
-                        <div style={{ marginBottom: 12 }}>
-                          <label style={{ fontSize: 11, color: T.text2, display: 'block', marginBottom: 5 }}>
-                            Access Token <span style={{ fontSize: 10, color: T.text3 }}>(Gerenciador de Negócios → Usuários do Sistema)</span>
-                          </label>
-                          <FSecret value={metaToken} onChange={setMetaToken} placeholder="Cole o token aqui" />
-                        </div>
-                        {metaTestMsg && (
-                          <div style={{ marginBottom: 10, padding: '7px 10px', borderRadius: 6, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", background: metaTestState === 'ok' ? 'rgba(16,185,129,0.06)' : 'rgba(244,63,94,0.06)', border: `1px solid ${metaTestState === 'ok' ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.2)'}`, color: metaTestState === 'ok' ? T.green : T.red, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {metaTestState === 'ok' ? <CheckCircle size={11} /> : <XCircle size={11} />}{metaTestMsg}
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={handleTestMeta} disabled={metaTestState === 'testing'} style={{ height: 32, padding: '0 14px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: `1px solid ${metaTestState === 'ok' ? 'rgba(16,185,129,0.3)' : T.border}`, color: metaTestState === 'ok' ? T.green : T.text2, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <Wifi size={12} />{metaTestState === 'testing' ? 'Testando...' : metaTestState === 'ok' ? 'OK ✓' : 'Testar'}
-                          </button>
-                          <button onClick={handleSaveMeta} disabled={savingMeta} style={{ height: 32, padding: '0 16px', borderRadius: 7, background: 'linear-gradient(135deg, #1877F2, #0C5CC7)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
-                            {savingMeta ? 'Salvando...' : 'Salvar'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {metaConns.length > 0 && (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {metaConns.map(conn => (
-                      <button key={conn.id} onClick={() => handleSyncMeta(conn)} disabled={syncingMeta === conn.fb_user_id} style={{ flex: 1, height: 34, borderRadius: 8, background: 'rgba(24,119,242,0.08)', border: '1px solid rgba(24,119,242,0.2)', color: '#1877F2', fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, cursor: 'pointer' }}>
-                        <RefreshCw size={12} style={{ animation: syncingMeta === conn.fb_user_id ? 'spin 1s linear infinite' : 'none' }} />
-                        Sincronizar
-                      </button>
-                    ))}
-                    <button onClick={() => setShowMetaForm(s => !s)} style={{ height: 34, padding: '0 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.text3, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-                      <Plus size={12} /> Nova conta
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Contas Meta expandidas */}
-              {expandMeta && metaConns.length > 0 && (
-                <div style={{ borderTop: `1px solid ${T.borderSub}` }}>
-                  {metaConns.map(conn => (
-                    <div key={conn.id}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px', background: T.bgRaised, borderBottom: `1px solid ${T.borderSub}` }}>
-                        <MetaLogo size={14} />
-                        <span style={{ fontSize: 12, fontWeight: 500, color: T.text1 }}>{conn.fb_user_name}</span>
-                        <span style={{ fontSize: 10, color: T.text3, fontFamily: "'JetBrains Mono', monospace" }}>ID {conn.fb_user_id}</span>
-                        <div style={{ flex: 1 }} />
-                        <button onClick={() => handleDisconnectMeta(conn)} style={{ width: 24, height: 24, borderRadius: 5, background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.15)', color: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                      {metaAccs.map(acc => (
-                        <AccountRow key={acc.id} nome={acc.nome} id={acc.account_id} balance={acc.balance} currency={acc.currency} status={acc.status} warn={(acc.balance ?? 0) < 20} />
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </div>
-        </div>
-
-        {/* Em breve */}
-        <div>
-          <p style={{ fontSize: 11, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 12 }}>Próximos canais</p>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr 1fr', gap: 10 }}>
-            <div style={{ background: T.bgSurface, border: '1px solid rgba(255,107,53,0.24)', borderRadius: 14, padding: '16px 18px', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at top right, rgba(255,107,53,0.12), transparent 42%)', pointerEvents: 'none' }}/>
-              <div style={{ position: 'relative', zIndex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 11, background: 'rgba(255,107,53,0.14)', border: '1px solid rgba(255,107,53,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span style={{ fontSize: 16, fontWeight: 900, color: '#FF6B35', fontFamily: "'Syne', sans-serif" }}>K</span>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: T.text1 }}>Kwai Ads</div>
-                      <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 20, background: 'rgba(255,107,53,0.12)', color: '#FF6B35', fontWeight: 700 }}>MAPEANDO API</span>
-                    </div>
-                    <p style={{ fontSize: 12, color: T.text3, lineHeight: 1.5 }}>Próximo canal de vídeo curto para acompanhar gasto, campanhas e ROAS junto com TikTok e Meta.</p>
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 8 }}>
-                  {[
-                    ['Credenciais', 'OAuth ou token de anunciante'],
-                    ['Dados', 'campanha, conjunto, criativo e gasto diário'],
-                    ['Sync', 'Edge Function no mesmo padrão do TikTok'],
-                  ].map(([label, desc]) => (
-                    <div key={label} style={{ padding: 10, borderRadius: 9, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T.border}` }}>
-                      <p style={{ fontSize: 10, color: '#FF6B35', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>{label}</p>
-                      <p style={{ fontSize: 11, color: T.text3, lineHeight: 1.4 }}>{desc}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {[
-              { name: 'Google Ads', desc: 'Campanhas do Google Search e YouTube Ads.', color: '#4285F4' },
-              { name: 'Taboola', desc: 'Native ads com gasto e conversões por campanha.', color: '#4B9B4B' },
-            ].map(p => (
-              <div key={p.name} style={{ background: T.bgSurface, border: `1px solid ${T.border}`, borderRadius: 14, padding: '16px 18px', opacity: 0.55 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: `${p.color}15`, border: `1px solid ${p.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: p.color }}>{p.name[0]}</span>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: T.text2 }}>{p.name}</div>
-                    <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 20, background: 'rgba(100,116,139,0.1)', color: T.text3 }}>EM BREVE</span>
-                  </div>
-                </div>
-                <p style={{ fontSize: 11, color: T.text3 }}>{p.desc}</p>
-              </div>
+      <div className="hk-2eq" style={{ marginBottom: 12 }}>
+        {/* ── TikTok Ads ── */}
+        <SourceCard logo={<TikTokLogo size={20} />} name="TikTok Ads" desc="Campanhas, adsets, criativos e saldo das contas via Business Center."
+          status={tkStatus as any} statusLabel={bcs.length ? `${bcs.length} BC${bcs.length > 1 ? 's' : ''}${warnTk ? ' · saldo baixo' : ''}` : 'Não conectado'}
+          stats={tkStats?.map(s => ({ ...s, warn: s.label === 'Saldo total' && warnTk }))}
+          expanded={expandTk} onExpand={bcs.length ? () => setExpandTk(e => !e) : undefined}
+          actions={<>
+            <button className={showTkForm ? 'tt-btn' : 'tt-btn tt-btn-primary'} onClick={() => setShowTkForm(s => !s)}><Plus size={13} />{showTkForm ? 'Cancelar' : 'Adicionar BC'}</button>
+            {bcs.map(bc => (
+              <button key={bc.id} className="tt-btn" onClick={() => handleSyncBc(bc)} disabled={syncingBc === bc.id} title={`Sincronizar ${bc.apelido}`}>
+                <RefreshCw size={12} style={{ animation: syncingBc === bc.id ? 'spin 1s linear infinite' : 'none' }} />{bcs.length > 1 ? bc.apelido : 'Sincronizar'}
+              </button>
             ))}
-          </div>
-        </div>
+          </>}
+          form={showTkForm ? <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Field label="Apelido"><FInput value={form.apelido} onChange={v => setForm(f => ({ ...f, apelido: v }))} placeholder="Ex: BC Principal" /></Field>
+              <Field label="BC ID"><FInput value={form.bc_id} onChange={v => setForm(f => ({ ...f, bc_id: v }))} placeholder="Ex: 7123456789" /></Field>
+            </div>
+            <Field label="Access token"><FSecret value={form.access_token} onChange={v => setForm(f => ({ ...f, access_token: v }))} placeholder="Cole o access token" /></Field>
+            <Field label="Proxy URL" hint="opcional"><FInput value={form.proxy_url} onChange={v => setForm(f => ({ ...f, proxy_url: v }))} placeholder="http://user:pass@ip:porta" /></Field>
+            <TestResult state={testState} msg={testMsg} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="tt-btn" onClick={handleTest} disabled={testState === 'testing'}><Wifi size={12} />{testState === 'testing' ? 'Testando...' : 'Testar conexão'}</button>
+              <button className="tt-btn tt-btn-primary" onClick={handleSaveBc} disabled={saving}>{saving ? 'Salvando...' : 'Salvar BC'}</button>
+            </div>
+          </> : undefined}>
+          {expandTk && bcs.length > 0 && (
+            <div style={{ borderTop: `1px solid ${H.lineSoft}` }}>
+              {bcs.map(bc => (
+                <div key={bc.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px', background: 'rgba(9,11,22,.3)', borderBottom: `1px solid ${H.lineSoft}` }}>
+                    <StatusPill tone={bc.sync_error ? 'bad' : bc.ativo ? 'good' : 'neutral'}>{bc.apelido}</StatusPill>
+                    <span className="tt-mono" style={{ fontSize: 10.5, color: H.muted }}>BC {bc.bc_id}</span>
+                    <div style={{ flex: 1 }} />
+                    {bc.sync_error && <span title={bc.sync_error} style={{ fontSize: 11, color: H.red, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bc.sync_error}</span>}
+                    {bc.last_sync && <span className="tt-cap">sync há {timeAgo(bc.last_sync)}</span>}
+                    <button className="tt-icon-btn" style={{ width: 26, height: 26 }} onClick={() => handleDeleteBc(bc.id)} aria-label={`Remover ${bc.apelido}`}><Trash2 size={12} /></button>
+                  </div>
+                  {bc.advertiser_accounts.length === 0 && <Empty pad={14}>Nenhuma conta sincronizada ainda.</Empty>}
+                  {bc.advertiser_accounts.map(adv => <AccountRow key={adv.id} nome={adv.nome ?? `#${adv.advertiser_id}`} id={adv.advertiser_id} balance={adv.balance} currency={adv.currency} status={adv.status ?? 'ACTIVE'} warn={(adv.balance ?? 0) < 100} />)}
+                </div>
+              ))}
+            </div>
+          )}
+        </SourceCard>
 
+        {/* ── Meta Ads ── */}
+        <SourceCard logo={<MetaLogo size={20} />} name="Meta Ads" desc="Business Manager com campanhas do Facebook e Instagram, gasto diário e saldo."
+          status={metaStatus as any} statusLabel={metaConns.length ? `${metaConns.length} conexão${metaConns.length > 1 ? 'ões' : ''}${warnMeta ? ' · saldo baixo' : ''}` : 'Não conectado'}
+          stats={metaStats?.map(s => ({ ...s, warn: s.label === 'Saldo total' && warnMeta }))}
+          expanded={expandMeta} onExpand={metaConns.length ? () => setExpandMeta(e => !e) : undefined}
+          actions={<>
+            {metaConns.length === 0 && <button className="tt-btn tt-btn-primary" onClick={handleConnectMeta}><MetaLogo size={14} /> Conectar com Facebook</button>}
+            {metaConns.map(conn => (
+              <button key={conn.id} className="tt-btn" onClick={() => handleSyncMeta(conn)} disabled={syncingMeta === conn.fb_user_id}>
+                <RefreshCw size={12} style={{ animation: syncingMeta === conn.fb_user_id ? 'spin 1s linear infinite' : 'none' }} />Sincronizar{metaConns.length > 1 ? ` ${conn.fb_user_name}` : ''}
+              </button>
+            ))}
+            <button className="tt-btn" onClick={() => setShowMetaForm(s => !s)}><Plus size={12} />{showMetaForm ? 'Cancelar' : 'Usar token de sistema'}</button>
+          </>}
+          form={showMetaForm ? <>
+            <Field label="Apelido" hint="opcional"><FInput value={metaApelido} onChange={setMetaApelido} placeholder="Ex: BM Principal" /></Field>
+            <Field label="Access token" hint="Gerenciador de Negócios → Usuários do sistema"><FSecret value={metaToken} onChange={setMetaToken} placeholder="Cole o token aqui" /></Field>
+            <TestResult state={metaTestState} msg={metaTestMsg} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="tt-btn" onClick={handleTestMeta} disabled={metaTestState === 'testing'}><Wifi size={12} />{metaTestState === 'testing' ? 'Testando...' : 'Testar token'}</button>
+              <button className="tt-btn tt-btn-primary" onClick={handleSaveMeta} disabled={savingMeta}>{savingMeta ? 'Salvando...' : 'Salvar'}</button>
+            </div>
+          </> : undefined}>
+          {expandMeta && metaConns.length > 0 && (
+            <div style={{ borderTop: `1px solid ${H.lineSoft}` }}>
+              {metaConns.map(conn => (
+                <div key={conn.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px', background: 'rgba(9,11,22,.3)', borderBottom: `1px solid ${H.lineSoft}` }}>
+                    <StatusPill tone="good">{conn.fb_user_name}</StatusPill>
+                    <span className="tt-mono" style={{ fontSize: 10.5, color: H.muted }}>ID {conn.fb_user_id}</span>
+                    <div style={{ flex: 1 }} />
+                    <button className="tt-icon-btn" style={{ width: 26, height: 26 }} onClick={() => handleDisconnectMeta(conn)} aria-label={`Desconectar ${conn.fb_user_name}`}><Trash2 size={12} /></button>
+                  </div>
+                  {metaAccs.map(acc => <AccountRow key={acc.id} nome={acc.nome} id={acc.account_id} balance={acc.balance} currency={acc.currency} status={acc.status} warn={(acc.balance ?? 0) < 20} />)}
+                </div>
+              ))}
+            </div>
+          )}
+        </SourceCard>
       </div>
-      <style>{sharedStyles}</style>
+
+      <div className="tt-cap" style={{ margin: '4px 2px 10px', fontSize: 12, color: H.sub, fontWeight: 600 }}>Próximos canais</div>
+      <div className="tt-grid-3" style={{ gap: 12 }}>
+        {[
+          { name: 'Kwai Ads', desc: 'Gasto, campanhas e ROAS junto com TikTok e Meta — sync via Edge Function no mesmo padrão.', tag: 'Mapeando API' },
+          { name: 'Google Ads', desc: 'Search e YouTube Ads com gasto e conversões por campanha.', tag: 'Em breve' },
+          { name: 'Taboola', desc: 'Native ads com gasto e conversões por campanha.', tag: 'Em breve' },
+        ].map(p => (
+          <Panel key={p.name} style={{ padding: 16, opacity: p.tag === 'Em breve' ? 0.6 : 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(163,167,242,.10)', color: H.lav, fontWeight: 800 }}>{p.name[0]}</div>
+              <div style={{ flex: 1 }}><div style={{ color: H.text, fontWeight: 700, fontSize: 13 }}>{p.name}</div></div>
+              <span className="tt-chip">{p.tag}</span>
+            </div>
+            <p style={{ color: H.muted, fontSize: 12, lineHeight: 1.5, marginTop: 10 }}>{p.desc}</p>
+          </Panel>
+        ))}
+      </div>
     </div>
   )
 }

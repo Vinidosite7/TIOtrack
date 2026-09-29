@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const redirectUri = `${base}/api/auth/meta/callback`
+    const redirectUri = `${base}/api/meta/callback`
 
     // 1. Troca code por short-lived token
     const tokenRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${META_APP_SECRET}&code=${code}`)

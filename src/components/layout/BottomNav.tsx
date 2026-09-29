@@ -1,68 +1,43 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, TrendingUp, ShoppingCart, FileText, Settings, PlugZap, Link2 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { LayoutDashboard, TrendingUp, ShoppingCart, Package, ShieldCheck, Settings } from 'lucide-react'
 
-const TABS = [
-  { href: '/overview',      icon: LayoutDashboard, label: 'Hoje',        color: '#60a5fa' },
-  { href: '/campanhas',     icon: TrendingUp,      label: 'Campanhas',   color: '#34d399' },
-  { href: '/vendas',        icon: ShoppingCart,    label: 'Vendas',      color: '#22d3ee' },
-  { href: '/utms',          icon: Link2,           label: 'UTMs',        color: '#a78bfa' },
-  { href: '/integracoes',   icon: PlugZap,         label: 'Integrações', color: '#f59e0b' },
-  { href: '/relatorios',    icon: FileText,        label: 'Relatórios',  color: '#60a5fa' },
-  { href: '/configuracoes', icon: Settings,        label: 'Config',      color: '#8a8aaa' },
+const tabs = [
+  { href: '/overview', icon: LayoutDashboard, label: 'Home', color: '#a3a7f2' },
+  { href: '/campanhas', icon: TrendingUp, label: 'Ads', color: '#a3a7f2' },
+  { href: '/vendas', icon: ShoppingCart, label: 'Sales', color: '#a3a7f2' },
+  { href: '/produtos', icon: Package, label: 'Produtos', color: '#a3a7f2' },
+  { href: '/traffic', icon: ShieldCheck, label: 'Traffic', color: '#a3a7f2' },
+  { href: '/configuracoes', icon: Settings, label: 'Config', color: '#a3a7f2' },
 ]
 
 export default function BottomNav() {
   const pathname = usePathname()
-
   return (
-    <div style={{
-      position: 'fixed', bottom: 0, left: 0, right: 0,
-      display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
-      padding: '0 10px 12px',
-      paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-      zIndex: 100, pointerEvents: 'none',
-    }}>
-      <div style={{
-        pointerEvents: 'auto',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(7,minmax(0,1fr))',
-        gap: 4,
-        width: 'min(100%, 430px)',
-        padding: '8px',
-        borderRadius: 24,
-        background: 'rgba(10,10,18,0.94)',
-        border: '1px solid rgba(124,110,247,0.18)',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(124,110,247,0.06)',
-        backdropFilter: 'blur(20px)',
-      }}>
-        {TABS.map((item) => {
-          const Icon = item.icon
+    <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, padding: '0 12px 12px', paddingBottom: 'max(12px, env(safe-area-inset-bottom))', zIndex: 50, justifyContent: 'center', pointerEvents: 'none' }}>
+      <div className="tt-panel" style={{ pointerEvents: 'auto', display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0,1fr))', gap: 6, width: 'min(100%, 520px)', margin: '0 auto', padding: 8, borderRadius: 22 }}>
+        {tabs.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + '/')
+          const Icon = item.icon
           return (
-            <a key={item.href} href={item.href} aria-label={item.label} style={{ textDecoration: 'none', minWidth: 0 }}>
-              <motion.div
-                whileTap={{ scale: 0.94 }}
-                style={{
-                  height: 44,
-                  borderRadius: 16,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 3,
-                  background: active ? `${item.color}18` : 'rgba(255,255,255,0.025)',
-                  border: `1px solid ${active ? `${item.color}42` : 'rgba(255,255,255,0.055)'}`,
-                  color: active ? item.color : '#5d6378',
-                  boxShadow: active ? `0 0 16px ${item.color}22` : 'none',
-                }}>
-                <Icon size={16}/>
-                <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 8, lineHeight: 1, fontWeight: 800, letterSpacing: '-0.03em', color: active ? '#E2E8F0' : '#68708a' }}>
-                  {item.label}
-                </span>
-              </motion.div>
+            <a key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
+              <div style={{
+                minHeight: 48,
+                borderRadius: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                border: `1px solid ${active ? `${item.color}44` : 'rgba(170,176,235,.08)'}`,
+                background: active ? `${item.color}15` : 'rgba(255,255,255,.03)',
+                color: active ? '#eceefb' : '#666c8e',
+                boxShadow: active ? `0 10px 24px ${item.color}22` : 'none',
+              }}>
+                <Icon size={16} color={active ? item.color : '#666c8e'} />
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.02em' }}>{item.label}</span>
+              </div>
             </a>
           )
         })}

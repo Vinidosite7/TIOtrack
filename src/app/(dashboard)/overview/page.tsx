@@ -1,1228 +1,426 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { motion, AnimatePresence, animate as fmAnimate } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  TrendingUp, TrendingDown, RefreshCw, AlertTriangle,
-  Zap, GripVertical, Eye, EyeOff, Settings2, Check, X,
-  Trophy, Minimize2, Maximize2,
-  BookOpen, Bell, Key, BarChart2, Percent, Activity,
-  Plug, Target, ArrowRight,
+  CircleDollarSign, Wallet, Receipt, Target, Crosshair, RefreshCw, Search, Pause, Play, Bot, UserRound,
 } from 'lucide-react'
-import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor,
-  useSensor, useSensors, DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  arrayMove, SortableContext, sortableKeyboardCoordinates,
-  useSortable, rectSortingStrategy,
-} from '@dnd-kit/sortable'
-import {
-  AreaChart, Area, XAxis, YAxis, Tooltip as RTooltip,
-  ResponsiveContainer, CartesianGrid,
-} from 'recharts'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/store/workspace'
+import {
+  H, Panel, PanelHead, KpiCard, TrafficPulseCard, Gauge, MeterRow, WorldMap, Pager, Empty,
+  brl, num, short, pctDelta, flag, countryName, timeHMS,
+} from '@/components/hawk/ui'
 
-// ─── Tokens (igual BossFlow) ──────────────────────────────────
-const T = {
-  bg:        '#0b0f14',
-  card:      'rgba(15,22,35,0.98)',
-  border:    'rgba(148,163,184,0.08)',
-  borderMid: 'rgba(148,163,184,0.14)',
-  text:      '#e2e8f0',
-  sub:       '#94a3b8',
-  muted:     '#475569',
-  green:     '#10b981',
-  red:       '#ef4444',
-  blue:      '#3b82f6',
-  amber:     '#f59e0b',
-  purple:    '#7c6ef7',
-  cyan:      '#22d3ee',
-  mono:      "'JetBrains Mono', monospace",
-  sans:      "'DM Sans', sans-serif",
-  display:   "'Syne', sans-serif",
+type Period = 'hoje' | '7d' | '30d'
+type Ev = {
+  id: string; created_at: string; session_id: string | null; action: string; event_name: string; path: string | null
+  ip: string | null; country: string | null; device_type: string | null; reason: string | null; risk_score: number | null
+  utm_source: string | null; utm_medium: string | null; utm_campaign: string | null; utm_content: string | null
 }
 
-const cardBase: React.CSSProperties = {
-  background: T.card,
-  border: `1px solid ${T.border}`,
-  borderRadius: 14,
-  overflow: 'hidden',
-  position: 'relative',
+const iso = (d: Date) => d.toISOString().slice(0, 10)
+const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
+const PERIOD_DAYS: Record<Period, number> = { hoje: 1, '7d': 7, '30d': 30 }
+const PERIOD_LABEL: Record<Period, string> = { hoje: 'Hoje', '7d': '7 dias', '30d': '30 dias' }
+const EV_COLS = 'id,created_at,session_id,action,event_name,path,ip,country,device_type,reason,risk_score,utm_source,utm_medium,utm_campaign,utm_content'
+
+function ranges(p: Period) {
+  const today = new Date()
+  const n = PERIOD_DAYS[p]
+  const from = addDays(today, -(n - 1))
+  const prevTo = addDays(from, -1)
+  const prevFrom = addDays(prevTo, -(n - 1))
+  return { from: iso(from), to: iso(today), prevFrom: iso(prevFrom), prevTo: iso(prevTo), days: n }
 }
 
-// ─── Types ────────────────────────────────────────────────────
-type Period   = 'hoje' | '7d' | '30d'
-type WidgetId = 'kpi_receita' | 'kpi_gasto' | 'kpi_lucro' | 'kpi_roas'
-  | 'grafico_receita' | 'activity_feed' | 'melhor_campanha'
-  | 'top3_campanhas' | 'cpv_medio' | 'projecao_mes' | 'meta_dia'
-  | 'saldo_bcs' | 'saldo_meta' | 'alertas' | 'diario_rapido'
-  | 'token_expiry' | 'score_criativos' | 'meta_mes'
-type Widget = { id: WidgetId; label: string; visible: boolean }
-
-const DEFAULT_WIDGETS: Widget[] = [
-  { id: 'kpi_receita',     label: 'KPI Receita',         visible: true },
-  { id: 'kpi_gasto',       label: 'KPI Gasto em Ads',    visible: true },
-  { id: 'kpi_lucro',       label: 'KPI Lucro Líquido',   visible: true },
-  { id: 'kpi_roas',        label: 'KPI ROAS',            visible: true },
-  { id: 'grafico_receita', label: 'Gráfico 14 dias',     visible: true },
-  { id: 'activity_feed',   label: 'Atividade em Tempo Real', visible: false },
-  { id: 'melhor_campanha', label: 'Melhor Campanha',     visible: false },
-  { id: 'top3_campanhas',  label: 'Top 3 Campanhas',     visible: false },
-  { id: 'cpv_medio',       label: 'CPV Médio',           visible: false },
-  { id: 'projecao_mes',    label: 'Projeção do Mês',     visible: false },
-  { id: 'meta_dia',        label: 'Meta do Dia',         visible: false },
-  { id: 'saldo_bcs',       label: 'Saldo TikTok BCs',   visible: false },
-  { id: 'saldo_meta',      label: 'Saldo Meta Ads',      visible: false },
-  { id: 'alertas',         label: 'Alertas',             visible: false },
-  { id: 'diario_rapido',   label: 'Diário Rápido',       visible: false },
-  { id: 'token_expiry',    label: 'Status dos Tokens',   visible: false },
-  { id: 'score_criativos', label: 'Score de Campanhas',  visible: false },
-  { id: 'meta_mes',        label: 'Meta do Mês',         visible: false },
-]
-
-const LAYOUT_VERSION = 'v3'
-
-// ─── Helpers ──────────────────────────────────────────────────
-const toBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const hoje  = () => new Date().toISOString().split('T')[0]
-const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0] }
-const diasNoMes = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth()+1, 0).getDate() }
-const diaAtual  = () => new Date().getDate()
-const calcScore = (r: number) => r >= 3.5 ? 'S' : r >= 2.5 ? 'A' : r >= 1.5 ? 'B' : r >= 0.8 ? 'C' : 'D'
-const fmtDia    = (s: string) => { const [,m,d] = s.split('-'); return `${d}/${m}` }
-const timeAgo   = (s: string) => {
-  const m = Math.floor((Date.now() - new Date(s).getTime()) / 60000)
-  if (m < 1) return 'agora'; if (m < 60) return `${m}min`
-  if (m < 1440) return `${Math.floor(m/60)}h`; return `${Math.floor(m/1440)}d`
+function eventLabel(e: Ev, firstOfSession: boolean) {
+  const n = (e.event_name || '').toLowerCase()
+  if (n.includes('checkout')) return 'Checkout'
+  if (n.includes('purchase') || n.includes('compra')) return 'Compra'
+  if (n.includes('click')) return 'Clique'
+  if (n.includes('lead')) return 'Lead'
+  if (firstOfSession) return 'Entrada'
+  return 'Navegação'
 }
 
-const SCORE: Record<string, { bg: string; color: string }> = {
-  S: { bg: 'rgba(59,130,246,0.15)',  color: '#60A5FA' },
-  A: { bg: 'rgba(16,185,129,0.12)',  color: '#34D399' },
-  B: { bg: 'rgba(245,158,11,0.12)',  color: '#FCD34D' },
-  C: { bg: 'rgba(244,63,94,0.10)',   color: '#FB7185' },
-  D: { bg: 'rgba(100,100,120,0.08)', color: '#64748B' },
+function actionLabel(a: string) {
+  return a === 'block' ? 'Bloqueado' : a === 'redirect' ? 'Redirecionado' : a === 'challenge' ? 'Desafiado' : 'Permitido'
 }
 
-// ─── Animated Number (igual BossFlow) ─────────────────────────
-function AnimNum({ value, format }: { value: number; format: (v: number) => string }) {
-  const [display, setDisplay] = useState(format(0))
-  const prev = useRef(0)
-  useEffect(() => {
-    const from = prev.current; prev.current = value
-    const ctrl = fmAnimate(from, value, {
-      duration: 0.9, ease: 'easeOut',
-      onUpdate: v => setDisplay(format(v)),
-    })
-    return ctrl.stop
-  }, [value])
-  return <span>{display}</span>
-}
-
-// ─── Skeleton ─────────────────────────────────────────────────
-const Sk = ({ h = 40, r = 8, mb = 6 }: { h?: number; r?: number; mb?: number }) => (
-  <div style={{
-    height: h, borderRadius: r, marginBottom: mb,
-    background: `linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 100%)`,
-    backgroundSize: '200% 100%', animation: 'sk 1.4s ease-in-out infinite',
-  }}/>
-)
-
-// ─── GlowCorner (igual BossFlow) ──────────────────────────────
-function GlowCorner({ color }: { color: string }) {
-  return (
-    <div style={{
-      position: 'absolute', bottom: -24, right: -24,
-      width: 130, height: 130, borderRadius: '50%',
-      background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
-      filter: 'blur(18px)', pointerEvents: 'none', zIndex: 0,
-    }}/>
-  )
-}
-
-// ─── SCard (flat, estilo UTMify) ──────────────────────────────
-function SCard({ children, style = {} }: {
-  children: React.ReactNode; style?: React.CSSProperties; glowColor?: string
-}) {
-  return (
-    <div style={{
-      ...cardBase,
-      border: `1px solid ${T.border}`,
-      height: '100%',
-      boxSizing: 'border-box',
-      ...style,
-    }}>
-      <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
-    </div>
-  )
-}
-
-// ─── KPI Card (flat, estilo UTMify) ───────────────────────────
-function KpiCard({ label, value, delta, pos: isPos, color, icon: Icon, loading, index = 0 }: {
-  label: string; value: number; format: (v: number) => string; delta: string
-  pos: boolean; color: string; icon: React.ElementType; loading?: boolean; index?: number
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <SCard style={{ height: '100%' }}>
-        <div style={{ padding: 20 }}>
-          {/* Top row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: T.display }}>
-              {label}
-            </span>
-            <div style={{
-              width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-              background: `${color}12`, border: `1px solid ${color}20`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Icon size={14} style={{ color }} strokeWidth={2}/>
-            </div>
-          </div>
-
-          {/* Value */}
-          <div style={{ marginBottom: 10 }}>
-            {loading ? <Sk h={32} mb={0}/> : (
-              <p style={{
-                fontSize: 24, fontWeight: 700, fontFamily: T.display,
-                color: T.text,
-                letterSpacing: '-0.02em', lineHeight: 1,
-              }}>
-                <AnimNum value={value} format={v => toBRL(v)}/>
-              </p>
-            )}
-          </div>
-
-          {/* Delta */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 3,
-              fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 600,
-              background: isPos ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-              color: isPos ? T.green : T.red,
-            }}>
-              {isPos ? '↑' : '↓'} {delta}
-            </span>
-            <span style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>vs anterior</span>
-          </div>
-        </div>
-      </SCard>
-    </motion.div>
-  )
-}
-
-// ─── ROAS Card (flat) ─────────────────────────────────────────
-function RoasCard({ value, delta, loading, index }: {
-  value: number; delta: string; loading?: boolean; index?: number
-}) {
-  const color = T.purple
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: (index ?? 3) * 0.05, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <SCard style={{ height: '100%' }}>
-        <div style={{ padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: T.display }}>ROAS</span>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: `${color}12`, border: `1px solid ${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Zap size={14} style={{ color }} strokeWidth={2}/>
-            </div>
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            {loading ? <Sk h={32} mb={0}/> : (
-              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Syne', sans-serif", color: T.text, letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-                <AnimNum value={value} format={v => `${v.toFixed(2)}x`}/>
-              </p>
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 600, background: 'rgba(124,110,247,0.1)', color }}>
-              {delta}
-            </span>
-            <span style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>vs anterior</span>
-          </div>
-        </div>
-      </SCard>
-    </motion.div>
-  )
-}
-
-// ─── Card Head ────────────────────────────────────────────────
-function CardHead({ icon: Icon, title, badge, badgeColor = T.blue, color = T.muted }: {
-  icon: React.ElementType; title: string; badge?: string; badgeColor?: string; color?: string
-}) {
-  return (
-    <div style={{
-      padding: '14px 20px', borderBottom: `1px solid ${T.border}`,
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
-      <Icon size={13} style={{ color, flexShrink: 0 }}/>
-      <span style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.display }}>
-        {title}
-      </span>
-      {badge && (
-        <span style={{
-          marginLeft: 'auto', fontSize: 9, padding: '2px 8px', borderRadius: 20,
-          background: `${badgeColor}15`, color: badgeColor,
-          fontFamily: T.mono, fontWeight: 600, border: `1px solid ${badgeColor}25`,
-        }}>
-          {badge}
-        </span>
-      )}
-    </div>
-  )
-}
-
-// ─── Floating orbs background (igual BossFlow) ────────────────
-function PageBg() {
-  return (
-    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.05) 1px, transparent 1px)', backgroundSize: '28px 28px', maskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%)' }}/>
-    </div>
-  )
-}
-
-// ─── Sortable Widget Wrapper (modo edição estilo UTMify) ──────
-function SW({ id, editMode, visible, onToggle, children, span = 1 }: {
-  id: string; editMode: boolean; visible: boolean; onToggle: () => void
-  children: React.ReactNode; span?: number
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
-
-  if (!editMode && !visible) return null
-
-  return (
-    <div
-      ref={setNodeRef}
-      suppressHydrationWarning
-      style={{
-        transform: transform ? `translate3d(${transform.x}px,${transform.y}px,0)` : undefined,
-        transition, gridColumn: `span ${span}`, opacity: isDragging ? 0.4 : 1,
-        position: 'relative', minWidth: 0,
-      }}
-    >
-      {editMode ? (
-        <div style={{
-          position: 'relative',
-          borderRadius: 14,
-          outline: `1.5px dashed ${visible ? 'rgba(124,110,247,0.4)' : 'rgba(148,163,184,0.2)'}`,
-          outlineOffset: 2,
-          opacity: visible ? 1 : 0.45,
-          overflow: 'hidden',
-        }}>
-          {/* Barra de controle no topo do card */}
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-            height: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '0 8px',
-            background: 'rgba(11,15,20,0.85)', backdropFilter: 'blur(4px)',
-            borderBottom: `1px solid ${T.border}`,
-          }}>
-            <button {...attributes} {...listeners} style={{ display: 'flex', alignItems: 'center', gap: 4, height: 22, padding: '0 6px', borderRadius: 6, background: 'transparent', border: 'none', color: T.muted, cursor: 'grab', fontSize: 10, fontFamily: T.sans }}>
-              <GripVertical size={12}/> mover
-            </button>
-            <button onClick={onToggle} style={{ width: 24, height: 22, borderRadius: 6, background: 'transparent', border: 'none', color: visible ? T.muted : T.green, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title={visible ? 'Ocultar' : 'Mostrar'}>
-              {visible ? <X size={13}/> : <Eye size={13}/>}
-            </button>
-          </div>
-          <div style={{ paddingTop: 30, pointerEvents: 'none' }}>{children}</div>
-        </div>
-      ) : children}
-    </div>
-  )
-}
-
-// ─── Ring counter ─────────────────────────────────────────────
-function Ring({ n }: { n: number }) {
-  const pct = (n / 300) * 100
-  const r = 9, c = 2 * Math.PI * r
-  return (
-    <div style={{ position: 'relative', width: 24, height: 24, flexShrink: 0 }}>
-      <svg width="24" height="24" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="12" cy="12" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2"/>
-        <circle cx="12" cy="12" r={r} fill="none" stroke={T.blue} strokeWidth="2" strokeDasharray={c} strokeDashoffset={c - (pct / 100) * c} strokeLinecap="round"/>
-      </svg>
-      <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, color: T.muted, fontFamily: T.mono }}>{n}</span>
-    </div>
-  )
-}
-
-// ─── Activity Item ────────────────────────────────────────────
-function ActivityItem({ type, name, value, time, source, index }: {
-  type: string; name: string; value?: number; time: string; source?: string; index: number
-}) {
-  const isVenda = type === 'venda'
-  const isPix   = type === 'pix'
-  const color   = isVenda ? T.green : isPix ? T.amber : T.blue
-  const label   = isVenda ? 'Venda paga' : isPix ? 'PIX gerado' : 'Lead'
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.04, duration: 0.3 }}
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: `1px solid ${T.border}` }}
-    >
-      <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}`, flexShrink: 0 }}/>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: T.text, fontFamily: T.sans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-          {source && (
-            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.06)', color: T.muted, fontFamily: T.mono, flexShrink: 0 }}>{source}</span>
-          )}
-        </div>
-        <span style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>{label}</span>
-      </div>
-      {value !== undefined && (
-        <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: T.mono, flexShrink: 0 }}>{toBRL(value)}</span>
-      )}
-      <span style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, flexShrink: 0 }}>{time}</span>
-    </motion.div>
-  )
-}
-
-// ─── Chart Tooltip ────────────────────────────────────────────
-function CT({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
-  return (
-    <div style={{ background: 'rgba(15,22,35,0.98)', border: `1px solid ${T.border}`, borderRadius: 10, padding: '8px 12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-      <p style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontFamily: T.mono }}>{label}</p>
-      {payload.map((p: any) => (
-        <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-          <div style={{ width: 8, height: 8, borderRadius: 2, background: p.color, flexShrink: 0 }}/>
-          <span style={{ fontSize: 12, color: T.sub, fontFamily: T.sans }}>{p.dataKey}</span>
-          <span style={{ fontSize: 12, fontWeight: 600, color: p.color, fontFamily: T.mono }}>{toBRL(p.value)}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ─── Bar ──────────────────────────────────────────────────────
-const Bar = ({ pct, color }: { pct: number; color: string }) => (
-  <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden' }}>
-    <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: color, borderRadius: 99, boxShadow: `0 0 6px ${color}60`, transition: 'width 700ms cubic-bezier(.4,0,.2,1)' }}/>
-  </div>
-)
-
-const ScoreBadge = ({ score }: { score: string }) => {
-  const s = SCORE[score] ?? SCORE.D
-  return <span style={{ width: 22, height: 22, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, fontFamily: T.mono, background: s.bg, color: s.color, flexShrink: 0 }}>{score}</span>
-}
-
-function SetupActionCard({ icon: Icon, title, text, action, href, color, tone = 'idle' }: {
-  icon: React.ElementType
-  title: string
-  text: string
-  action: string
-  href: string
-  color: string
-  tone?: 'idle' | 'hot'
-}) {
-  return (
-    <button
-      onClick={() => { window.location.href = href }}
-      style={{
-        minHeight: 116,
-        padding: 16,
-        borderRadius: 12,
-        background: tone === 'hot' ? `${color}10` : 'rgba(255,255,255,0.025)',
-        border: `1px solid ${tone === 'hot' ? `${color}35` : T.border}`,
-        color: T.text,
-        cursor: 'pointer',
-        textAlign: 'left',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        gap: 14,
-        transition: 'border-color 160ms, background 160ms, transform 160ms',
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.borderColor = `${color}55`
-        e.currentTarget.style.background = `${color}12`
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = tone === 'hot' ? `${color}35` : T.border
-        e.currentTarget.style.background = tone === 'hot' ? `${color}10` : 'rgba(255,255,255,0.025)'
-      }}
-    >
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-          background: `${color}12`, border: `1px solid ${color}25`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Icon size={15} color={color}/>
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: T.display, marginBottom: 5 }}>{title}</p>
-          <p style={{ fontSize: 12, lineHeight: 1.45, color: T.sub, fontFamily: T.sans }}>{text}</p>
-        </div>
-      </div>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color, fontWeight: 700, fontFamily: T.sans }}>
-        {action} <ArrowRight size={12}/>
-      </span>
-    </button>
-  )
-}
-
-function SetupPanel({ alertas, hasAdAccount, hasMeta, hasGoal, hasActivity, isMobile }: {
-  alertas: { msg: string }[]
-  hasAdAccount: boolean
-  hasMeta: boolean
-  hasGoal: boolean
-  hasActivity: boolean
-  isMobile: boolean
-}) {
-  const readyCount = [hasAdAccount, hasMeta, hasGoal, hasActivity].filter(Boolean).length
-  const nextActions = [
-    {
-      icon: Plug,
-      title: hasAdAccount ? 'TikTok Ads conectado' : 'Conectar TikTok Ads',
-      text: hasAdAccount ? 'A conta ja esta entrando no painel de performance.' : 'Puxe gasto, campanha e ROAS para sair do zero operacional.',
-      action: hasAdAccount ? 'Ver integracoes' : 'Conectar agora',
-      href: '/integracoes',
-      color: T.cyan,
-      tone: hasAdAccount ? 'idle' as const : 'hot' as const,
-    },
-    {
-      icon: Bell,
-      title: hasMeta ? 'Meta Ads conectado' : 'Conectar Meta Ads',
-      text: hasMeta ? 'Saldos e contas Meta ja podem entrar nos alertas.' : 'Use a Meta para acompanhar saldo, tokens e contas ativas.',
-      action: hasMeta ? 'Ver contas' : 'Adicionar conta',
-      href: '/integracoes',
-      color: T.blue,
-      tone: hasMeta ? 'idle' as const : 'hot' as const,
-    },
-    {
-      icon: Target,
-      title: hasGoal ? 'Meta mensal definida' : 'Definir meta do mes',
-      text: hasGoal ? 'O painel consegue projetar ritmo e risco da meta.' : 'Crie uma referencia para o TioTrack avisar se o mes saiu do ritmo.',
-      action: hasGoal ? 'Ajustar meta' : 'Definir meta',
-      href: '/configuracoes',
-      color: T.purple,
-      tone: hasGoal ? 'idle' as const : 'hot' as const,
-    },
-  ]
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-      style={{ gridColumn: isMobile ? 'span 1' : 'span 4' }}
-    >
-      <SCard>
-        <div style={{
-          padding: isMobile ? 16 : 18,
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'minmax(260px, 0.9fr) minmax(0, 1.6fr)',
-          gap: isMobile ? 16 : 18,
-          alignItems: 'stretch',
-        }}>
-          <div style={{
-            padding: 16,
-            borderRadius: 12,
-            background: 'linear-gradient(145deg, rgba(59,130,246,0.12), rgba(16,185,129,0.06) 55%, rgba(15,22,35,0.2))',
-            border: `1px solid ${T.borderMid}`,
-            minHeight: 164,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}>
-            <div>
-              <p style={{ fontSize: 10, color: T.cyan, fontFamily: T.mono, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
-                Partida do painel
-              </p>
-              <h2 style={{ fontSize: isMobile ? 19 : 22, color: T.text, lineHeight: 1.12, fontFamily: T.display, letterSpacing: '-0.01em', marginBottom: 9 }}>
-                Deixe o TioTrack pronto para operar sozinho.
-              </h2>
-              <p style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.55, fontFamily: T.sans }}>
-                Falta pouco: conecte as fontes, defina a meta e os cards deixam de ser apenas numeros para virar alerta de decisao.
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18 }}>
-              <div style={{ flex: 1 }}>
-                <Bar pct={(readyCount / 4) * 100} color={readyCount >= 3 ? T.green : T.blue}/>
-              </div>
-              <span style={{ fontSize: 11, color: T.sub, fontFamily: T.mono }}>{readyCount}/4</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
-            {nextActions.map(item => <SetupActionCard key={item.title} {...item}/>)}
-          </div>
-
-          <div style={{
-            gridColumn: isMobile ? 'span 1' : 'span 2',
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
-            gap: 10,
-          }}>
-            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T.border}` }}>
-              <p style={{ fontSize: 10, color: T.muted, fontFamily: T.display, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Alertas</p>
-              <p style={{ fontSize: 19, color: alertas.length ? T.amber : T.green, fontFamily: T.display, fontWeight: 800, marginBottom: 4 }}>{alertas.length}</p>
-              <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans }}>
-                {alertas[0]?.msg ?? 'Nenhum ponto critico agora.'}
-              </p>
-            </div>
-            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T.border}` }}>
-              <p style={{ fontSize: 10, color: T.muted, fontFamily: T.display, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Atividade</p>
-              <p style={{ fontSize: 19, color: hasActivity ? T.green : T.muted, fontFamily: T.display, fontWeight: 800, marginBottom: 4 }}>{hasActivity ? 'ON' : 'OFF'}</p>
-              <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans }}>
-                {hasActivity ? 'Vendas recentes ja aparecem no feed.' : 'As primeiras vendas aparecem aqui em tempo real.'}
-              </p>
-            </div>
-            <button
-              onClick={() => { window.location.href = '/campanhas' }}
-              style={{
-                padding: 14,
-                borderRadius: 10,
-                background: 'rgba(255,255,255,0.025)',
-                border: `1px solid ${T.border}`,
-                cursor: 'pointer',
-                textAlign: 'left',
-                color: T.text,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                gap: 10,
-              }}
-            >
-              <div>
-                <p style={{ fontSize: 10, color: T.muted, fontFamily: T.display, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Campanhas</p>
-                <p style={{ fontSize: 19, color: T.blue, fontFamily: T.display, fontWeight: 800, marginBottom: 4 }}>ROAS</p>
-                <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans }}>Quando sincronizar, o ranking mostra onde escalar ou cortar gasto.</p>
-              </div>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: T.blue, fontWeight: 700, fontFamily: T.sans }}>
-                Ver campanhas <ArrowRight size={12}/>
-              </span>
-            </button>
-          </div>
-        </div>
-      </SCard>
-    </motion.div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MAIN PAGE
-// ═══════════════════════════════════════════════════════════════
 export default function OverviewPage() {
-  const [isMobile, setIsMobile] = useState(false)
+  const { active } = useWorkspaceStore()
+  const [period, setPeriod] = useState<Period>('30d')
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [spend, setSpend] = useState<{ dia: string; spend: number }[]>([])
+  const [sales, setSales] = useState<any[]>([])
+  const [events, setEvents] = useState<Ev[]>([])
+  const [series, setSeries] = useState({ receita: true, gasto: true })
+  const [prodPage, setProdPage] = useState(0)
+
+  // logs
+  const [q, setQ] = useState('')
+  const [fCountry, setFCountry] = useState('todos')
+  const [fSource, setFSource] = useState('todas')
+  const [paused, setPaused] = useState(false)
+  const pausedRef = useRef(false)
+  const buffer = useRef<Ev[]>([])
+  const [buffered, setBuffered] = useState(0)
+  const [, setTick] = useState(0)
+
+  const r = useMemo(() => ranges(period), [period])
+
+  const load = useCallback(async () => {
+    if (!active?.id) return
+    setLoading(true)
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const [tk, meta, conv, ev] = await Promise.all([
+      supabase.from('ad_spend_daily').select('dia,spend').eq('workspace_id', active.id).gte('dia', r.prevFrom).lte('dia', r.to),
+      (supabase as any).from('meta_ad_spend_daily').select('dia,spend').eq('workspace_id', active.id).gte('dia', r.prevFrom).lte('dia', r.to),
+      supabase.from('conversions').select('id,created_at,dia,valor,status,produto').eq('workspace_id', active.id).gte('dia', r.prevFrom).lte('dia', r.to),
+      supabase.from('traffic_events').select(EV_COLS).eq('workspace_id', active.id).gte('created_at', since).order('created_at', { ascending: false }).limit(1500),
+    ])
+    setSpend([...(tk.data || []), ...((meta as any)?.data || [])].map((x: any) => ({ dia: x.dia, spend: Number(x.spend || 0) })))
+    setSales(conv.data || [])
+    setEvents((ev.data || []) as Ev[])
+    setLoading(false)
+    setRefreshing(false)
+  }, [active?.id, r])
+
+  useEffect(() => { load() }, [load])
+
+  // realtime + pausa
+  useEffect(() => { pausedRef.current = paused }, [paused])
   useEffect(() => {
-    const fn = () => setIsMobile(window.innerWidth < 768)
-    fn(); window.addEventListener('resize', fn)
-    return () => window.removeEventListener('resize', fn)
-  }, [])
+    if (!active?.id) return
+    const ch = supabase.channel(`hk-overview-${active.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'traffic_events', filter: `workspace_id=eq.${active.id}` }, (payload: any) => {
+        const row = payload.new as Ev
+        if (pausedRef.current) { buffer.current.unshift(row); setBuffered(buffer.current.length); return }
+        setEvents(prev => [row, ...prev].slice(0, 1500))
+      }).subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [active?.id])
+  // re-render a cada 15s para a janela "ativos agora / últimos 30 min" andar sozinha
+  useEffect(() => { const t = setInterval(() => setTick(x => x + 1), 15000); return () => clearInterval(t) }, [])
 
-  const { active: workspace } = useWorkspaceStore()
-
-  const [period, setPeriod]     = useState<Period>('hoje')
-  const [editMode, setEditMode] = useState(false)
-  const [compact, setCompact]   = useState(false)
-  const [widgets, setWidgets]   = useState<Widget[]>(DEFAULT_WIDGETS)
-  const [nextRefresh, setNextRefresh] = useState(300)
-  const [refreshing, setRefreshing]   = useState(false)
-
-  const [lKpi, setLKpi]   = useState(true)
-  const [lFeed, setLFeed] = useState(true)
-  const [lChart, setLChart] = useState(true)
-  const [lCamp, setLCamp] = useState(true)
-  const [lMeta, setLMeta] = useState(true)
-  const [lBcs, setLBcs]   = useState(true)
-
-  const [kpi, setKpi]         = useState<any>(null)
-  const [feed, setFeed]       = useState<any[]>([])
-  const [chartData, setChartData] = useState<any[]>([])
-  const [criativos, setCriativos] = useState<any[]>([])
-  const [melhor, setMelhor]   = useState<any>(null)
-  const [meta, setMeta]       = useState<any>(null)
-  const [bcs, setBcs]         = useState<any[]>([])
-  const [metaAccs, setMetaAccs] = useState<any[]>([])
-  const [metaConns, setMetaConns] = useState<any[]>([])
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-
-  useEffect(() => {
-    if (!workspace?.id) return
-    const s = localStorage.getItem(`tiotrack_layout_${LAYOUT_VERSION}_${workspace.id}`)
-    if (s) {
-      try {
-        const saved: Widget[] = JSON.parse(s)
-        const merged = DEFAULT_WIDGETS.map(d => saved.find(w => w.id === d.id) ?? d)
-        setWidgets(merged)
-      } catch {}
+  function togglePause() {
+    if (paused && buffer.current.length) {
+      const rows = buffer.current
+      buffer.current = []
+      setBuffered(0)
+      setEvents(prev => [...rows, ...prev].slice(0, 1500))
     }
-    const c = localStorage.getItem(`tiotrack_compact_${workspace.id}`)
-    if (c) setCompact(c === 'true')
-  }, [workspace?.id])
-
-  const save = (nw: Widget[]) => {
-    setWidgets(nw)
-    if (workspace?.id) localStorage.setItem(`tiotrack_layout_${LAYOUT_VERSION}_${workspace.id}`, JSON.stringify(nw))
+    setPaused(p => !p)
   }
-  const handleDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e
-    if (over && active.id !== over.id) {
-      const o = widgets.findIndex(w => w.id === active.id)
-      const n = widgets.findIndex(w => w.id === over.id)
-      save(arrayMove(widgets, o, n))
+
+  // ── números ─────────────────────────────────────────────────
+  const k = useMemo(() => {
+    const inCur = (d?: string | null) => !!d && d >= r.from && d <= r.to
+    const inPrev = (d?: string | null) => !!d && d >= r.prevFrom && d <= r.prevTo
+    const sum = (rows: any[], f: string) => rows.reduce((s, x) => s + Number(x[f] || 0), 0)
+    const paidCur = sales.filter(s => s.status === 'paid' && inCur(s.dia))
+    const paidPrev = sales.filter(s => s.status === 'paid' && inPrev(s.dia))
+    const lossCur = sales.filter(s => (s.status === 'refunded' || s.status === 'chargeback') && inCur(s.dia))
+    const lossPrev = sales.filter(s => (s.status === 'refunded' || s.status === 'chargeback') && inPrev(s.dia))
+    const bruto = sum(paidCur, 'valor'), brutoP = sum(paidPrev, 'valor')
+    const liquido = bruto - sum(lossCur, 'valor'), liquidoP = brutoP - sum(lossPrev, 'valor')
+    const gasto = sum(spend.filter(s => inCur(s.dia)), 'spend'), gastoP = sum(spend.filter(s => inPrev(s.dia)), 'spend')
+    const roas = gasto > 0 ? bruto / gasto : 0, roasP = gastoP > 0 ? brutoP / gastoP : 0
+    const cpa = paidCur.length ? gasto / paidCur.length : 0, cpaP = paidPrev.length ? gastoP / paidPrev.length : 0
+    const ratio = (a: number, b: number) => Math.max(a, b) > 0 ? a / Math.max(a, b) : 0
+    return {
+      bruto, liquido, gasto, roas, cpa, vendas: paidCur.length,
+      d: { bruto: pctDelta(bruto, brutoP), liquido: pctDelta(liquido, liquidoP), gasto: pctDelta(gasto, gastoP), roas: pctDelta(roas, roasP), cpa: pctDelta(cpa, cpaP) },
+      p: { bruto: ratio(bruto, brutoP), liquido: bruto > 0 ? liquido / bruto : 0, gasto: ratio(gasto, gastoP), roas: Math.min(1, roas / 4), cpa: ratio(cpaP, cpa) },
+      paidCur,
     }
-  }
-  const toggle = (id: WidgetId) => save(widgets.map(w => w.id === id ? { ...w, visible: !w.visible } : w))
+  }, [sales, spend, r])
 
-  const loadKpi = useCallback(async (wid: string, p: Period) => {
-    setLKpi(true)
-    const diff = p === 'hoje' ? 0 : p === '7d' ? 7 : 30
-    const from = p === 'hoje' ? hoje() : diasAtras(diff), prev = diasAtras(diff === 0 ? 1 : diff * 2), h = hoje()
-    const [sR, pR, vR, pvR] = await Promise.all([
-      supabase.from('ad_spend_daily').select('spend,conversion_value').eq('workspace_id', wid).gte('dia', from).lte('dia', h),
-      supabase.from('ad_spend_daily').select('spend,conversion_value').eq('workspace_id', wid).gte('dia', prev).lt('dia', from),
-      supabase.from('conversions').select('valor').eq('workspace_id', wid).eq('status', 'paid').gte('dia', from).lte('dia', h),
-      supabase.from('conversions').select('valor').eq('workspace_id', wid).eq('status', 'paid').gte('dia', prev).lt('dia', from),
-    ])
-    const ts = sR.data?.reduce((s: number, r: any) => s + (r.spend ?? 0), 0) ?? 0
-    const tr = vR.data?.reduce((s: number, r: any) => s + (r.valor ?? 0), 0) ?? sR.data?.reduce((s: number, r: any) => s + (r.conversion_value ?? 0), 0) ?? 0
-    const ps = pR.data?.reduce((s: number, r: any) => s + (r.spend ?? 0), 0) ?? 0
-    const pr = pvR.data?.reduce((s: number, r: any) => s + (r.valor ?? 0), 0) ?? 0
-    const pct = (c: number, p2: number) => p2 > 0 ? Math.round(((c - p2) / p2) * 100) : 0
-    const ro = ts > 0 ? tr / ts : 0, pro = ps > 0 ? pr / ps : 0
-    setKpi({ receita: tr, gasto: ts, lucro: tr - ts, roas: ro, dR: pct(tr, pr), dG: pct(ts, ps), dL: pct(tr - ts, pr - ps), dRo: Math.round((ro - pro) * 100) / 100 })
-    setLKpi(false)
-  }, [])
+  // ── gráfico desempenho por tempo ────────────────────────────
+  const chart = useMemo(() => {
+    if (period === 'hoje') {
+      const hours = Array.from({ length: 24 }, (_, h) => ({ label: `${String(h).padStart(2, '0')}h`, receita: 0, gasto: 0 }))
+      for (const s of k.paidCur) hours[new Date(s.created_at).getHours()].receita += Number(s.valor || 0)
+      return hours.slice(0, new Date().getHours() + 1)
+    }
+    const days: Record<string, { label: string; receita: number; gasto: number }> = {}
+    for (let i = 0; i < r.days; i++) {
+      const d = iso(addDays(new Date(r.from + 'T12:00:00'), i))
+      days[d] = { label: d.slice(8, 10) + '/' + d.slice(5, 7), receita: 0, gasto: 0 }
+    }
+    for (const s of k.paidCur) if (days[s.dia]) days[s.dia].receita += Number(s.valor || 0)
+    for (const s of spend) if (days[s.dia]) days[s.dia].gasto += s.spend
+    return Object.values(days)
+  }, [k.paidCur, spend, r, period])
 
-  const loadFeed = useCallback(async (wid: string, p: Period) => {
-    setLFeed(true)
-    const diff = p === 'hoje' ? 0 : p === '7d' ? 7 : 30
-    const from = diasAtras(diff), h = hoje()
-    const fromTs = new Date(); fromTs.setDate(fromTs.getDate() - diff)
-    const [{ data: vendas }, { data: pendentes }] = await Promise.all([
-      supabase.from('conversions').select('id,created_at,customer_name,valor,utm_source').eq('workspace_id', wid).eq('status', 'paid').gte('dia', from).lte('dia', h).order('created_at', { ascending: false }).limit(10),
-      supabase.from('conversions').select('id,created_at,customer_name,valor').eq('workspace_id', wid).eq('status', 'pending').gte('dia', from).lte('dia', h).order('created_at', { ascending: false }).limit(6),
-    ])
-    const items = [
-      ...(vendas ?? []).map((v: any) => ({ ...v, _type: 'venda', _ts: new Date(v.created_at).getTime() })),
-      ...(pendentes ?? []).map((v: any) => ({ ...v, _type: 'pix', _ts: new Date(v.created_at).getTime() })),
-    ].sort((a, b) => b._ts - a._ts).slice(0, 12)
-    setFeed(items); setLFeed(false)
-  }, [])
+  // ── faturamento por produto ─────────────────────────────────
+  const products = useMemo(() => {
+    const m: Record<string, { name: string; valor: number; n: number }> = {}
+    for (const s of k.paidCur) {
+      const key = (s.produto || 'Sem produto').trim()
+      m[key] ||= { name: key, valor: 0, n: 0 }
+      m[key].valor += Number(s.valor || 0); m[key].n++
+    }
+    return Object.values(m).sort((a, b) => b.valor - a.valor)
+  }, [k.paidCur])
+  const PER = 4
+  const prodPages = Math.max(1, Math.ceil(products.length / PER))
+  useEffect(() => { setProdPage(0) }, [period, active?.id])
 
-  const loadChart = useCallback(async (wid: string) => {
-    setLChart(true)
-    const [{ data: sp }, { data: sal }] = await Promise.all([
-      supabase.from('ad_spend_daily').select('dia,spend').eq('workspace_id', wid).gte('dia', diasAtras(13)).lte('dia', hoje()).order('dia', { ascending: true }),
-      supabase.from('conversions').select('dia,valor').eq('workspace_id', wid).eq('status', 'paid').gte('dia', diasAtras(13)).lte('dia', hoje()),
-    ])
-    const map: Record<string, { g: number; r: number }> = {}
-    for (let i = 13; i >= 0; i--) { const d = diasAtras(i); map[d] = { g: 0, r: 0 } }
-    ;(sp ?? []).forEach((r: any) => { if (map[r.dia]) map[r.dia].g += r.spend ?? 0 })
-    ;(sal ?? []).forEach((r: any) => { if (r.dia && map[r.dia]) map[r.dia].r += r.valor ?? 0 })
-    setChartData(Object.entries(map).map(([dia, v]) => ({ dia: fmtDia(dia), Receita: Math.round(v.r), Gasto: Math.round(v.g) })))
-    setLChart(false)
-  }, [])
+  // ── tráfego ─────────────────────────────────────────────────
+  const t = useMemo(() => {
+    const now = Date.now()
+    const activeNow = new Set(events.filter(e => now - new Date(e.created_at).getTime() < 5 * 60 * 1000).map(e => e.session_id).filter(Boolean)).size
+    const bars = Array.from({ length: 30 }, () => 0)
+    for (const e of events) {
+      const m = Math.floor((now - new Date(e.created_at).getTime()) / 60000)
+      if (m >= 0 && m < 30) bars[29 - m]++
+    }
+    const byCountry: Record<string, number> = {}
+    for (const e of events) if (e.country) byCountry[e.country] = (byCountry[e.country] || 0) + 1
+    const allowed = events.filter(e => e.action === 'allow').length
+    const firstSeen = new Set<string>()
+    const firstIds = new Set<string>()
+    for (let i = events.length - 1; i >= 0; i--) {
+      const s = events[i].session_id
+      if (s && !firstSeen.has(s)) { firstSeen.add(s); firstIds.add(events[i].id) }
+    }
+    const countries = Object.keys(byCountry).sort((a, b) => byCountry[b] - byCountry[a])
+    const sources = Array.from(new Set(events.map(e => e.utm_source || 'direto'))).sort()
+    return { activeNow, bars, byCountry, allowed, denied: events.length - allowed, firstIds, countries, sources }
+  }, [events])
 
-  const loadCamp = useCallback(async (wid: string) => {
-    setLCamp(true)
-    const { data } = await supabase.from('ad_spend_daily').select('campaign_name,spend,conversion_value').eq('workspace_id', wid).gte('dia', diasAtras(7)).not('campaign_name', 'is', null)
-    const map: Record<string, { s: number; r: number }> = {}
-    ;(data ?? []).forEach((r: any) => { if (!r.campaign_name) return; if (!map[r.campaign_name]) map[r.campaign_name] = { s: 0, r: 0 }; map[r.campaign_name].s += r.spend ?? 0; map[r.campaign_name].r += r.conversion_value ?? 0 })
-    const camps = Object.entries(map).map(([nome, v]) => ({ nome, spend: v.s, roas: v.s > 0 ? v.r / v.s : 0, score: calcScore(v.s > 0 ? v.r / v.s : 0) })).filter(c => c.spend > 0).sort((a, b) => b.roas - a.roas)
-    setCriativos(camps.slice(0, 6)); setMelhor(camps[0] ?? null); setLCamp(false)
-  }, [])
-
-  const loadMeta = useCallback(async (wid: string) => {
-    setLMeta(true)
-    const h = hoje(), im = new Date(); im.setDate(1)
-    const [pr, mr, hr] = await Promise.all([
-      supabase.from('user_prefs').select('meta_mensal_brl').eq('workspace_id', wid).single(),
-      supabase.from('conversions').select('valor').eq('workspace_id', wid).eq('status', 'paid').gte('dia', im.toISOString().split('T')[0]),
-      supabase.from('conversions').select('valor').eq('workspace_id', wid).eq('status', 'paid').eq('dia', h),
-    ])
-    setMeta({
-      metaMensal: pr.data?.meta_mensal_brl ?? 0,
-      receitaMes: mr.data?.reduce((s: number, r: any) => s + (r.valor ?? 0), 0) ?? 0,
-      receitaHoje: hr.data?.reduce((s: number, r: any) => s + (r.valor ?? 0), 0) ?? 0,
+  const filteredEvents = useMemo(() => {
+    const qq = q.trim().toLowerCase()
+    return events.filter(e => {
+      if (fCountry !== 'todos' && e.country !== fCountry) return false
+      if (fSource !== 'todas' && (e.utm_source || 'direto') !== fSource) return false
+      if (!qq) return true
+      return [e.ip, e.path, e.utm_source, e.utm_medium, e.utm_campaign, e.utm_content, e.reason].some(v => v && v.toLowerCase().includes(qq))
     })
-    setLMeta(false)
-  }, [])
-
-  const loadBcs = useCallback(async (wid: string) => {
-    setLBcs(true)
-    const [{ data: tk }, { data: ma }, { data: mc }] = await Promise.all([
-      supabase.from('advertiser_accounts').select('advertiser_id,nome,balance,bc_configs(apelido)').eq('workspace_id', wid),
-      (supabase as any).from('meta_ad_accounts').select('account_id,nome,balance,currency,status').eq('workspace_id', wid),
-      (supabase as any).from('meta_connections').select('id,fb_user_id,fb_user_name,updated_at').eq('workspace_id', wid),
-    ])
-    setBcs((tk ?? []).map((a: any) => ({ nome: a.bc_configs?.apelido ?? 'BC', adv: `#${a.advertiser_id?.slice(-4)}`, balance: a.balance ?? 0, warn: (a.balance ?? 0) < 100 })))
-    setMetaAccs(ma ?? []); setMetaConns(mc ?? []); setLBcs(false)
-  }, [])
-
-  const loadAll = useCallback((wid: string, p: Period, silent = false) => {
-    if (!silent) setRefreshing(true)
-    Promise.all([loadKpi(wid, p), loadFeed(wid, p), loadChart(wid), loadCamp(wid), loadMeta(wid), loadBcs(wid)])
-      .finally(() => setRefreshing(false))
-  }, [loadKpi, loadFeed, loadChart, loadCamp, loadMeta, loadBcs])
-
-  useEffect(() => { if (workspace?.id) loadAll(workspace.id, period) }, [workspace?.id, period])
-
-  useEffect(() => {
-    if (!workspace?.id) return
-    setNextRefresh(300)
-    const c = setInterval(() => setNextRefresh(n => n <= 1 ? 300 : n - 1), 1000)
-    const r = setInterval(() => { if (workspace?.id) loadAll(workspace.id, period, true) }, 300000)
-    return () => { clearInterval(c); clearInterval(r) }
-  }, [workspace?.id, period])
-
-  // Derived
-  const alertas = [
-    ...bcs.filter(b => b.warn && b.balance > 0).map(b => ({ msg: `${b.nome} — saldo baixo (${toBRL(b.balance)})` })),
-    ...metaAccs.filter(a => (a.balance ?? 0) > 0 && (a.balance ?? 0) < 20).map(a => ({ msg: `${a.nome} — saldo baixo` })),
-    ...(meta?.metaMensal > 0 && meta.receitaMes / meta.metaMensal < 0.3 && diaAtual() > 15
-      ? [{ msg: `Meta em risco — ${Math.round(meta.receitaMes / meta.metaMensal * 100)}% atingido` }] : []),
-  ]
-
-  const metaPct  = meta?.metaMensal ? Math.min(Math.round(meta.receitaMes / meta.metaMensal * 100), 100) : 0
-  const ritmo    = diaAtual() > 0 ? (meta?.receitaMes ?? 0) / diaAtual() : 0
-  const projecao = ritmo * diasNoMes()
-  const metaDiaria = meta?.metaMensal && diasNoMes() > 0 ? meta.metaMensal / diasNoMes() : 0
-  const diaStatus  = metaDiaria > 0 ? Math.min(Math.round((meta?.receitaHoje ?? 0) / metaDiaria * 100), 100) : 0
-  const totalTk    = bcs.reduce((s: number, b: any) => s + (b.balance ?? 0), 0)
-  const totalMeta  = metaAccs.reduce((s: number, a: any) => s + (a.balance ?? 0), 0)
-  const maxRoas    = criativos[0]?.roas || 1
-  const chartHasData = chartData.some(d => (d.Receita ?? 0) > 0 || (d.Gasto ?? 0) > 0)
-  const hasAdAccount = bcs.length > 0
-  const hasMeta = metaAccs.length > 0 || metaConns.length > 0
-  const hasGoal = (meta?.metaMensal ?? 0) > 0
-  const hasActivity = feed.length > 0
-  const shouldShowSetupPanel = !editMode && !lKpi && !lChart && (
-    !chartHasData || !hasAdAccount || !hasMeta || !hasGoal || alertas.length > 0
-  )
-
-  const getW = (id: WidgetId) => widgets.find(w => w.id === id)!
+  }, [events, q, fCountry, fSource])
+  const bots = filteredEvents.filter(e => e.action !== 'allow').slice(0, 7)
+  const real = filteredEvents.filter(e => e.action === 'allow').slice(0, 7)
+  const topCountries = t.countries.slice(0, 4)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: T.bg, position: 'relative' }}>
-      <PageBg/>
-
-      {/* ── Topbar ── */}
-      <div style={{
-        minHeight: 50, borderBottom: `1px solid ${T.border}`, flexShrink: 0,
-        display: 'flex', alignItems: 'center', padding: isMobile ? '10px 12px' : '0 20px', gap: 8,
-        flexWrap: isMobile ? 'wrap' : 'nowrap',
-        background: 'rgba(11,15,20,0.95)', backdropFilter: 'blur(20px)',
-        position: 'relative', zIndex: 10,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: isMobile ? '1 0 100%' : '0 1 auto' }}>
-          <span style={{ fontSize: isMobile ? 17 : 15, fontWeight: 700, color: '#e2e8f0', letterSpacing: '-0.02em', fontFamily: T.display }}>
-            Visão geral
-          </span>
-          {alertas.length > 0 && (
-            <span role="status" style={{ fontSize: 9, padding: '2px 8px', borderRadius: 20, background: 'rgba(239,68,68,0.12)', color: T.red, fontFamily: T.mono, fontWeight: 700, border: '1px solid rgba(239,68,68,0.2)' }}>
-              {alertas.length} alerta{alertas.length > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-        {!isMobile && <div style={{ flex: 1 }}/>} 
-        <div aria-label="Filtros do período" style={{ display: 'flex', alignItems: 'center', gap: 6, flex: isMobile ? 1 : '0 0 auto' }}>
-          <Ring n={nextRefresh}/>
-        {!isMobile && (
-          <button aria-label={compact ? 'Usar visualização confortável' : 'Usar visualização compacta'} title={compact ? 'Visualização confortável' : 'Visualização compacta'} onClick={() => setCompact(c => !c)} style={{ width: 30, height: 30, borderRadius: 8, background: compact ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${compact ? 'rgba(59,130,246,0.25)' : T.border}`, color: compact ? '#60a5fa' : T.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 160ms' }}>
-            {compact ? <Maximize2 size={12}/> : <Minimize2 size={12}/>} 
-          </button>
-        )}
-        {!isMobile && (
-          <button onClick={() => setEditMode(e => !e)} style={{ height: 30, padding: '0 14px', borderRadius: 8, background: editMode ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${editMode ? 'rgba(59,130,246,0.25)' : T.border}`, color: editMode ? '#60a5fa' : T.sub, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: T.sans, fontWeight: 500 }}>
-            {editMode ? <><Check size={11}/> Salvar</> : <><Settings2 size={11}/> Editar</>}
-          </button>
-        )}
-        {(['hoje', '7d', '30d'] as Period[]).map(p => (
-          <button key={p} aria-pressed={period === p} onClick={() => setPeriod(p)} style={{ height: isMobile ? 36 : 30, padding: isMobile ? '0 12px' : '0 14px', borderRadius: 8, background: period === p ? 'rgba(59,130,246,0.1)' : 'transparent', border: `1px solid ${period === p ? 'rgba(59,130,246,0.25)' : T.border}`, color: period === p ? '#60a5fa' : T.sub, fontSize: 11, cursor: 'pointer', fontFamily: T.sans, fontWeight: period === p ? 600 : 400, transition: 'all 160ms' }}>
-            {p === 'hoje' ? 'Hoje' : p === '7d' ? '7 dias' : '30 dias'}
-          </button>
-        ))}
-        <button aria-label="Atualizar dados" title="Atualizar dados" onClick={() => { if (workspace?.id) { setNextRefresh(300); loadAll(workspace.id, period, true) } }} style={{ width: isMobile ? 36 : 30, height: isMobile ? 36 : 30, borderRadius: 8, background: 'transparent', border: `1px solid ${T.border}`, color: T.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <RefreshCw size={12} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }}/>
-        </button>
-        </div>
-      </div>
-
-      {/* ── Content ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px 88px' : compact ? '12px 16px' : '16px 20px', position: 'relative', zIndex: 1 }}>
-        {editMode && (
-          <div style={{ marginBottom: 14, padding: '12px 16px', borderRadius: 12, background: 'rgba(124,110,247,0.06)', border: '1px solid rgba(124,110,247,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: T.purple, fontFamily: T.sans }}>
-              <Settings2 size={15}/>
-              <span>Editando dashboard · arraste pra reorganizar, <X size={11} style={{ display: 'inline', verticalAlign: -1 }}/> pra ocultar</span>
-            </div>
-            <span style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>
-              {widgets.filter(w => w.visible).length} de {widgets.length} visíveis
-            </span>
+    <div className="shell-page">
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div>
+          <h1 className="tt-title">Visão geral</h1>
+          <div className="tt-cap" style={{ marginTop: 4 }}>
+            {active?.nome || 'Workspace'} · {period === 'hoje' ? 'hoje' : `${r.from.split('-').reverse().slice(0, 2).join('/')} → ${r.to.split('-').reverse().slice(0, 2).join('/')}`} · comparado ao período anterior
           </div>
-        )}
-
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={widgets.map(w => w.id)} strategy={rectSortingStrategy}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? 'minmax(0,1fr)' : 'repeat(4, minmax(0,1fr))',
-              gap: compact ? 10 : 12,
-              alignItems: 'start',
-            }}>
-
-              {/* KPIs */}
-              <SW id="kpi_receita" editMode={editMode} visible={getW('kpi_receita').visible} onToggle={() => toggle('kpi_receita')}>
-                <KpiCard label="Receita" value={kpi?.receita ?? 0} format={toBRL} delta={`${(kpi?.dR ?? 0) >= 0 ? '+' : ''}${kpi?.dR ?? 0}%`} pos={(kpi?.dR ?? 0) >= 0} color={T.green} icon={TrendingUp} loading={lKpi} index={0}/>
-              </SW>
-              <SW id="kpi_gasto" editMode={editMode} visible={getW('kpi_gasto').visible} onToggle={() => toggle('kpi_gasto')}>
-                <KpiCard label="Gasto em Ads" value={kpi?.gasto ?? 0} format={toBRL} delta={`${(kpi?.dG ?? 0) >= 0 ? '+' : ''}${kpi?.dG ?? 0}%`} pos={(kpi?.dG ?? 0) <= 0} color={T.red} icon={TrendingDown} loading={lKpi} index={1}/>
-              </SW>
-              <SW id="kpi_lucro" editMode={editMode} visible={getW('kpi_lucro').visible} onToggle={() => toggle('kpi_lucro')}>
-                <KpiCard label="Lucro" value={kpi?.lucro ?? 0} format={toBRL} delta={`${(kpi?.dL ?? 0) >= 0 ? '+' : ''}${kpi?.dL ?? 0}%`} pos={(kpi?.dL ?? 0) >= 0} color={T.blue} icon={TrendingUp} loading={lKpi} index={2}/>
-              </SW>
-              <SW id="kpi_roas" editMode={editMode} visible={getW('kpi_roas').visible} onToggle={() => toggle('kpi_roas')}>
-                <RoasCard value={kpi?.roas ?? 0} delta={`${(kpi?.dRo ?? 0) >= 0 ? '+' : ''}${kpi?.dRo ?? 0}x`} loading={lKpi} index={3}/>
-              </SW>
-
-              {/* Gráfico */}
-              <SW id="grafico_receita" editMode={editMode} visible={getW('grafico_receita').visible} onToggle={() => toggle('grafico_receita')} span={isMobile ? 1 : 4}>
-                <SCard>
-                  <CardHead icon={BarChart2} title="Receita vs Gasto — 14 dias" badge="14d" badgeColor={T.muted} color={T.blue}/>
-                  <div style={{ padding: '12px 20px 20px' }}>
-                    {lChart ? <Sk h={compact ? 90 : 150}/> : !chartHasData ? (
-                      <div style={{
-                        height: compact ? 90 : 150,
-                        borderRadius: 12,
-                        border: `1px dashed ${T.borderMid}`,
-                        background: 'linear-gradient(180deg, rgba(59,130,246,0.06), rgba(15,22,35,0.02))',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textAlign: 'center',
-                        padding: 18,
-                      }}>
-                        <div>
-                          <p style={{ fontSize: 13, color: T.text, fontWeight: 700, fontFamily: T.display, marginBottom: 6 }}>Sem movimento neste periodo</p>
-                          <p style={{ fontSize: 12, color: T.sub, lineHeight: 1.45, fontFamily: T.sans, maxWidth: 420 }}>
-                            Conecte as contas de anuncios e confirme o rastreio de vendas para o grafico ganhar leitura de receita, gasto e ROAS.
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height={compact ? 90 : 150}>
-                        <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={T.green} stopOpacity={0.2}/><stop offset="100%" stopColor={T.green} stopOpacity={0}/></linearGradient>
-                            <linearGradient id="gG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={T.red} stopOpacity={0.12}/><stop offset="100%" stopColor={T.red} stopOpacity={0}/></linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" vertical={false}/>
-                          <XAxis dataKey="dia" tick={{ fontSize: 10, fill: T.muted }} axisLine={false} tickLine={false}/>
-                          <YAxis tick={{ fontSize: 10, fill: T.muted }} axisLine={false} tickLine={false} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} width={40}/>
-                          <RTooltip content={<CT/>}/>
-                          <Area type="monotone" dataKey="Receita" stroke={T.green} fill="url(#gR)" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: T.green }}/>
-                          <Area type="monotone" dataKey="Gasto" stroke={T.red} fill="url(#gG)" strokeWidth={1.5} dot={false} activeDot={{ r: 4, fill: T.red }}/>
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </SCard>
-              </SW>
-
-              {shouldShowSetupPanel && (
-                <SetupPanel
-                  alertas={alertas}
-                  hasAdAccount={hasAdAccount}
-                  hasMeta={hasMeta}
-                  hasGoal={hasGoal}
-                  hasActivity={hasActivity}
-                  isMobile={isMobile}
-                />
-              )}
-
-              {/* Activity Feed */}
-              <SW id="activity_feed" editMode={editMode} visible={getW('activity_feed').visible} onToggle={() => toggle('activity_feed')} span={isMobile ? 1 : 4}>
-                <SCard glowColor="rgba(16,185,129,0.08)">
-                  <CardHead icon={Activity} title="Atividade em tempo real" badge="ao vivo" badgeColor={T.green} color={T.green}/>
-                  <div style={{ padding: '0 20px 8px' }}>
-                    {lFeed ? <>{[1,2,3,4].map(i => <Sk key={i} h={52} r={8} mb={4}/>)}</> :
-                     feed.length === 0 ? (
-                      <p style={{ fontSize: 13, color: T.sub, textAlign: 'center', padding: '24px 0', fontFamily: T.sans }}>As novas vendas e atualizações aparecerão aqui em tempo real.</p>
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: '0 32px' }}>
-                        {feed.map((item: any, i: number) => (
-                          <ActivityItem
-                            key={item.id ?? i}
-                            type={item._type}
-                            name={item.customer_name || 'Cliente'}
-                            value={item.valor}
-                            time={timeAgo(item.created_at)}
-                            source={item.utm_source}
-                            index={i}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Melhor campanha */}
-              <SW id="melhor_campanha" editMode={editMode} visible={getW('melhor_campanha').visible} onToggle={() => toggle('melhor_campanha')} span={isMobile ? 1 : 2}>
-                <SCard glowColor="rgba(245,158,11,0.08)">
-                  <CardHead icon={Trophy} title="Melhor campanha" badge="7d" badgeColor={T.green} color={T.amber}/>
-                  <div style={{ padding: '16px 20px' }}>
-                    {lCamp ? <Sk h={80}/> : !melhor ? (
-                      <p style={{ fontSize: 13, color: T.sub, fontFamily: T.sans, lineHeight: 1.5 }}>Conecte uma conta de anúncios para identificar sua campanha com melhor retorno.</p>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                          <ScoreBadge score={melhor.score}/>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: T.text, fontFamily: T.display, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{melhor.nome}</p>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
-                          {[['ROAS', `${melhor.roas.toFixed(2)}x`, T.amber], ['Gasto', toBRL(melhor.spend), T.red], ['Score', melhor.score, T.blue]].map(([l, v, c]: any) => (
-                            <div key={l}>
-                              <p style={{ fontSize: 9, color: T.muted, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>{l}</p>
-                              <p style={{ fontSize: 15, fontWeight: 700, color: c, fontFamily: T.display }}>{v}</p>
-                            </div>
-                          ))}
-                        </div>
-                        <Bar pct={Math.min((melhor.roas / 4) * 100, 100)} color={T.amber}/>
-                      </>
-                    )}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Top 3 campanhas */}
-              <SW id="top3_campanhas" editMode={editMode} visible={getW('top3_campanhas').visible} onToggle={() => toggle('top3_campanhas')} span={isMobile ? 1 : 2}>
-                <SCard>
-                  <CardHead icon={BarChart2} title="Top campanhas" badge="ROAS" badgeColor={T.blue} color={T.blue}/>
-                  <div style={{ padding: '8px 20px 16px' }}>
-                    {lCamp ? <>{[1,2,3].map(i => <Sk key={i} h={36} mb={6}/>)}</> :
-                     criativos.length === 0 ? <p style={{ fontSize: 13, color: T.sub, padding: '12px 0', fontFamily: T.sans, lineHeight: 1.5 }}>Os rankings aparecerão após a sincronização das campanhas.</p> :
-                     criativos.slice(0, 5).map((c: any, i: number) => (
-                      <div key={c.nome} style={{ padding: '8px 0', borderBottom: i < 4 ? `1px solid ${T.border}` : 'none' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                          <span style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, width: 16 }}>#{i+1}</span>
-                          <ScoreBadge score={c.score}/>
-                          <span style={{ fontSize: 12, color: T.text, fontFamily: T.sans, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nome}</span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: T.amber, fontFamily: T.mono }}>{c.roas.toFixed(2)}x</span>
-                        </div>
-                        <div style={{ paddingLeft: 24 }}>
-                          <Bar pct={(c.roas / maxRoas) * 100} color={SCORE[c.score]?.color ?? T.muted}/>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Meta do mês */}
-              <SW id="meta_mes" editMode={editMode} visible={getW('meta_mes').visible} onToggle={() => toggle('meta_mes')} span={isMobile ? 1 : 2}>
-                <SCard glowColor="rgba(124,110,247,0.08)">
-                  <CardHead icon={Percent} title="Meta do mês" color={T.purple}/>
-                  <div style={{ padding: '16px 20px' }}>
-                    {lMeta ? <Sk h={80}/> : !meta?.metaMensal ? (
-                      <p style={{ fontSize: 13, color: T.muted, fontFamily: T.sans }}>Defina uma meta nas configurações.</p>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 10 }}>
-                          <div>
-                            <p style={{ fontSize: 22, fontWeight: 700, color: metaPct >= 100 ? T.green : T.purple, fontFamily: T.display }}>{metaPct}%</p>
-                            <p style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>{toBRL(meta.receitaMes)} de {toBRL(meta.metaMensal)}</p>
-                          </div>
-                          <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, background: metaPct >= 100 ? 'rgba(16,185,129,0.12)' : 'rgba(124,110,247,0.12)', color: metaPct >= 100 ? T.green : T.purple, fontFamily: T.sans, fontWeight: 600 }}>
-                            {metaPct >= 100 ? '🎉 Batida!' : diaAtual() > 15 && metaPct < 50 ? 'Atenção' : 'No ritmo'}
-                          </span>
-                        </div>
-                        <Bar pct={metaPct} color={metaPct >= 100 ? T.green : T.purple}/>
-                      </>
-                    )}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Projeção */}
-              <SW id="projecao_mes" editMode={editMode} visible={getW('projecao_mes').visible} onToggle={() => toggle('projecao_mes')}>
-                <SCard>
-                  <div style={{ padding: '16px 20px' }}>
-                    <p style={{ fontSize: 10, color: T.muted, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Projeção</p>
-                    {lMeta ? <Sk h={28} mb={6}/> : (
-                      <p style={{ fontSize: 20, fontWeight: 700, color: projecao >= (meta?.metaMensal ?? 0) ? T.green : T.amber, fontFamily: T.display, marginBottom: 4 }}>{toBRL(projecao)}</p>
-                    )}
-                    <p style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>
-                      {meta?.metaMensal > 0 ? `${Math.round(projecao / meta.metaMensal * 100)}% da meta` : 'Sem meta definida'}
-                    </p>
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Meta do dia */}
-              <SW id="meta_dia" editMode={editMode} visible={getW('meta_dia').visible} onToggle={() => toggle('meta_dia')}>
-                <SCard>
-                  <div style={{ padding: '16px 20px' }}>
-                    <p style={{ fontSize: 10, color: T.muted, fontFamily: T.display, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Hoje</p>
-                    {lMeta ? <Sk h={28} mb={6}/> : (
-                      <p style={{ fontSize: 20, fontWeight: 700, color: diaStatus >= 100 ? T.green : diaStatus >= 60 ? T.blue : T.amber, fontFamily: T.display, marginBottom: 4 }}>{toBRL(meta?.receitaHoje ?? 0)}</p>
-                    )}
-                    <p style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>
-                      {metaDiaria > 0 ? `Meta: ${toBRL(metaDiaria)}/dia` : 'Sem meta'}
-                    </p>
-                    {metaDiaria > 0 && <div style={{ marginTop: 8 }}><Bar pct={diaStatus} color={diaStatus >= 100 ? T.green : T.blue}/></div>}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Saldo TikTok */}
-              <SW id="saldo_bcs" editMode={editMode} visible={getW('saldo_bcs').visible} onToggle={() => toggle('saldo_bcs')} span={isMobile ? 1 : 2}>
-                <SCard>
-                  <CardHead icon={Key} title="Saldo TikTok BCs" color={T.cyan}/>
-                  <div style={{ padding: '8px 20px 16px' }}>
-                    {lBcs ? <Sk h={60}/> : bcs.length === 0 ? (
-                      <p style={{ fontSize: 13, color: T.muted, padding: '8px 0', fontFamily: T.sans }}>Nenhuma BC conectada.</p>
-                    ) : (
-                      <>
-                        <p style={{ fontSize: 18, fontWeight: 700, color: T.cyan, fontFamily: T.display, marginBottom: 10 }}>{toBRL(totalTk)}</p>
-                        {bcs.filter(b => b.balance > 0).map((b: any) => (
-                          <div key={b.adv} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${T.border}` }}>
-                            <div>
-                              <p style={{ fontSize: 12, color: T.text, fontFamily: T.sans }}>{b.nome}</p>
-                              <p style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>{b.adv}</p>
-                            </div>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: b.warn ? T.amber : T.green, fontFamily: T.mono }}>{toBRL(b.balance)}</span>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Saldo Meta */}
-              <SW id="saldo_meta" editMode={editMode} visible={getW('saldo_meta').visible} onToggle={() => toggle('saldo_meta')} span={isMobile ? 1 : 2}>
-                <SCard>
-                  <CardHead icon={Bell} title="Saldo Meta Ads" color={T.blue}/>
-                  <div style={{ padding: '8px 20px 16px' }}>
-                    {lBcs ? <Sk h={60}/> : metaAccs.length === 0 ? (
-                      <p style={{ fontSize: 13, color: T.muted, padding: '8px 0', fontFamily: T.sans }}>Nenhuma conta conectada.</p>
-                    ) : (
-                      <>
-                        <p style={{ fontSize: 18, fontWeight: 700, color: T.blue, fontFamily: T.display, marginBottom: 10 }}>{toBRL(totalMeta)}</p>
-                        {metaAccs.filter(a => a.balance > 0).map((a: any) => (
-                          <div key={a.account_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${T.border}` }}>
-                            <p style={{ fontSize: 12, color: T.text, fontFamily: T.sans }}>{a.nome}</p>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: (a.balance ?? 0) < 20 ? T.amber : T.green, fontFamily: T.mono }}>{toBRL(a.balance)}</span>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Alertas */}
-              <SW id="alertas" editMode={editMode} visible={getW('alertas').visible} onToggle={() => toggle('alertas')} span={isMobile ? 1 : 2}>
-                <SCard>
-                  <CardHead icon={AlertTriangle} title="Alertas" badgeColor={alertas.length > 0 ? T.red : T.green} badge={alertas.length > 0 ? `${alertas.length}` : '✓'} color={T.amber}/>
-                  <div style={{ padding: '8px 20px 16px' }}>
-                    {alertas.length === 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                        <span style={{ color: T.green }}>✅</span>
-                        <p style={{ fontSize: 13, color: T.muted, fontFamily: T.sans }}>Tudo em dia</p>
-                      </div>
-                    ) : alertas.map((a: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0', borderBottom: i < alertas.length - 1 ? `1px solid ${T.border}` : 'none' }}>
-                        <AlertTriangle size={12} style={{ color: T.amber, flexShrink: 0, marginTop: 2 }}/>
-                        <p style={{ fontSize: 12, color: T.sub, fontFamily: T.sans, lineHeight: 1.5 }}>{a.msg}</p>
-                      </div>
-                    ))}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Token expiry */}
-              <SW id="token_expiry" editMode={editMode} visible={getW('token_expiry').visible} onToggle={() => toggle('token_expiry')} span={isMobile ? 1 : 2}>
-                <SCard>
-                  <CardHead icon={Key} title="Status dos tokens" color={T.muted}/>
-                  <div style={{ padding: '8px 20px 16px' }}>
-                    {lBcs ? <Sk h={40}/> : metaConns.length === 0 ? (
-                      <p style={{ fontSize: 13, color: T.muted, fontFamily: T.sans }}>Nenhum token Meta.</p>
-                    ) : metaConns.map((c: any) => {
-                      const dias = c.updated_at ? Math.floor((Date.now() - new Date(c.updated_at).getTime()) / 86400000) : 0
-                      const ok = dias <= 45
-                      return (
-                        <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${T.border}` }}>
-                          <p style={{ fontSize: 12, color: T.text, fontFamily: T.sans }}>{c.fb_user_name}</p>
-                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: ok ? T.green : T.red, fontFamily: T.mono }}>{ok ? 'OK' : 'Expirando'}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Score criativos */}
-              <SW id="score_criativos" editMode={editMode} visible={getW('score_criativos').visible} onToggle={() => toggle('score_criativos')} span={isMobile ? 1 : 2}>
-                <SCard>
-                  <CardHead icon={BarChart2} title="Score campanhas" badge="7d" badgeColor={T.muted} color={T.muted}/>
-                  <div style={{ padding: '8px 20px 16px' }}>
-                    {lCamp ? <Sk h={80}/> : criativos.length === 0 ? (
-                      <p style={{ fontSize: 13, color: T.muted, fontFamily: T.sans }}>Sem campanhas.</p>
-                    ) : (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {['S','A','B','C','D'].map(s => {
-                          const count = criativos.filter(c => c.score === s).length
-                          const sc = SCORE[s]
-                          return count > 0 ? (
-                            <div key={s} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 12px', borderRadius: 10, background: sc.bg, border: `1px solid ${sc.color}25` }}>
-                              <span style={{ fontSize: 16, fontWeight: 800, color: sc.color, fontFamily: T.display }}>{count}</span>
-                              <span style={{ fontSize: 9, color: sc.color, fontFamily: T.mono }}>{s}</span>
-                            </div>
-                          ) : null
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </SCard>
-              </SW>
-
-              {/* Diário rápido */}
-              <SW id="diario_rapido" editMode={editMode} visible={getW('diario_rapido').visible} onToggle={() => toggle('diario_rapido')} span={isMobile ? 1 : 2}>
-                <SCard>
-                  <CardHead icon={BookOpen} title="Diário rápido" color={T.muted}/>
-                  <div style={{ padding: '12px 20px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <textarea
-                      placeholder="Observações do dia..."
-                      style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.border}`, borderRadius: 8, padding: '10px 12px', fontSize: 12, color: T.text, resize: 'none', outline: 'none', fontFamily: T.sans, minHeight: 72, boxSizing: 'border-box' }}
-                    />
-                  </div>
-                </SCard>
-              </SW>
-
-            </div>
-          </SortableContext>
-        </DndContext>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="tt-segment">
+            {(['hoje', '7d', '30d'] as Period[]).map(p => <button key={p} data-active={period === p} onClick={() => setPeriod(p)}>{PERIOD_LABEL[p]}</button>)}
+          </div>
+          <button className="tt-icon-btn" title="Atualizar" aria-label="Atualizar" onClick={() => { setRefreshing(true); load() }}>
+            <RefreshCw size={14} style={{ animation: refreshing ? 'spin 1s linear infinite' : undefined }} />
+          </button>
+        </div>
       </div>
 
-      <style>{`
-        @keyframes sk    { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-        @keyframes shimmerSweep { 0%,100%{background-position:200% center} 50%{background-position:-200% center} }
-        @keyframes spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes orbA  { 0%,100%{transform:translate(0,0) scale(1)} 30%{transform:translate(22px,-28px) scale(1.07)} 60%{transform:translate(-14px,18px) scale(0.95)} }
-        @keyframes orbB  { 0%,100%{transform:translate(0,0) scale(1)} 40%{transform:translate(-24px,22px) scale(1.09)} 70%{transform:translate(16px,-12px) scale(0.94)} }
-      `}</style>
+      {/* Linha 1 — tráfego + KPIs */}
+      <div className="hk-kpis" style={{ marginBottom: 12 }}>
+        <TrafficPulseCard active={t.activeNow} bars={t.bars} loading={loading} />
+        <KpiCard icon={CircleDollarSign} label="Faturamento Bruto" value={brl(k.bruto)} delta={k.d.bruto} progress={k.p.bruto} href="/vendas" loading={loading} hint={`${k.vendas} vendas pagas · vs. período anterior`} />
+        <KpiCard icon={Wallet} label="Faturamento Líquido" value={brl(k.liquido)} delta={k.d.liquido} progress={k.p.liquido} href="/vendas" loading={loading} hint="Bruto − reembolsos − chargebacks" />
+        <KpiCard icon={Receipt} label="Gastos" value={brl(k.gasto)} delta={k.d.gasto} progress={k.p.gasto} href="/campanhas" loading={loading} hint="TikTok + Meta · vs. período anterior" />
+        <KpiCard icon={Target} label="ROAS" value={`${k.roas.toFixed(2).replace('.', ',')}x`} delta={k.d.roas} progress={k.p.roas} href="/campanhas" loading={loading} />
+        <KpiCard icon={Crosshair} label="CPA" value={brl(k.cpa)} delta={k.d.cpa} invert progress={k.p.cpa} href="/campanhas" loading={loading} hint="Gasto ÷ vendas pagas (menor é melhor)" />
+      </div>
+
+      {/* Linha 2 — desempenho + produto/país */}
+      <div className="hk-row2" style={{ marginBottom: 12 }}>
+        <Panel>
+          <PanelHead
+            title="Desempenho por tempo"
+            sub={period === 'hoje' ? 'Faturamento por hora (gasto só tem granularidade diária)' : `Últimos ${r.days} dias`}
+            right={
+              <div style={{ display: 'flex', gap: 12 }}>
+                {([['receita', 'Faturamento', '#dcdefd'], ['gasto', 'Gastos', H.lavDim]] as const).map(([key, label, color]) => (
+                  <button key={key} onClick={() => setSeries(s => ({ ...s, [key]: !s[key] }))} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: series[key] ? H.sub : H.muted, opacity: series[key] ? 1 : 0.5 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: color }} />{label}
+                  </button>
+                ))}
+              </div>
+            }
+          />
+          <div style={{ height: 300, padding: '14px 10px 10px 0' }}>
+            {!loading && chart.every(c => !c.receita && !c.gasto) ? (
+              <Empty pad={110}>Sem movimento nesse período.</Empty>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chart} barGap={3} barCategoryGap={period === '7d' ? '32%' : '22%'}>
+                  <defs>
+                    <linearGradient id="hk-bar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f2f3ff" />
+                      <stop offset="100%" stopColor="#7e84dc" />
+                    </linearGradient>
+                    <linearGradient id="hk-bar-2" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#6b70a8" />
+                      <stop offset="100%" stopColor="#3b3f68" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(163,167,242,.07)" vertical={false} strokeDasharray="3 4" />
+                  <XAxis dataKey="label" tick={{ fill: H.muted, fontSize: 10.5, fontStyle: 'italic' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={14} />
+                  <YAxis tick={{ fill: H.muted, fontSize: 10.5 }} axisLine={false} tickLine={false} tickFormatter={v => short(Number(v))} width={44} />
+                  <Tooltip cursor={{ fill: 'rgba(163,167,242,.06)' }} contentStyle={{ background: '#161a2c', border: `1px solid ${H.line}`, borderRadius: 10, color: H.text, fontSize: 12 }} labelStyle={{ color: H.sub }} formatter={(v: any, name: any) => [brl(Number(v)), name === 'receita' ? 'Faturamento' : 'Gastos']} />
+                  {series.receita && <Bar dataKey="receita" fill="url(#hk-bar)" radius={[4, 4, 1, 1]} maxBarSize={14} />}
+                  {series.gasto && <Bar dataKey="gasto" fill="url(#hk-bar-2)" radius={[4, 4, 1, 1]} maxBarSize={14} />}
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </Panel>
+
+        <Panel>
+          <div className="hk-geo" style={{ padding: '16px 18px 14px', height: '100%' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
+              <h2 className="tt-h">Faturamento por produto</h2>
+              <div className="tt-cap" style={{ marginTop: 3 }}>{products.length} produto{products.length === 1 ? '' : 's'} · {PERIOD_LABEL[period].toLowerCase()}</div>
+              <div style={{ marginTop: 12, flex: 1 }}>
+                {!loading && products.length === 0 && <Empty pad={30}>Nenhuma venda paga no período.</Empty>}
+                {products.slice(prodPage * PER, prodPage * PER + PER).map(p => (
+                  <div key={p.name} style={{ padding: '9px 0', borderBottom: `1px solid ${H.lineSoft}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: H.text, fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                        <div style={{ color: H.muted, fontSize: 10.5, marginTop: 2 }}>{p.n} venda{p.n === 1 ? '' : 's'} × {brl(p.valor / p.n, 2)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div className="tt-num" style={{ fontSize: 13.5 }}>{brl(p.valor)}</div>
+                        <div style={{ color: H.muted, fontSize: 10.5, marginTop: 2 }}>{k.bruto ? ((p.valor / k.bruto) * 100).toFixed(1).replace('.', ',') : 0}%</div>
+                      </div>
+                    </div>
+                    <div style={{ height: 3, borderRadius: 99, background: 'rgba(163,167,242,.10)', marginTop: 7, overflow: 'hidden' }}>
+                      <div style={{ width: `${(p.valor / (products[0]?.valor || 1)) * 100}%`, height: '100%', borderRadius: 99, background: 'linear-gradient(90deg, rgba(163,167,242,.4), #dcdefd)' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}><Pager page={prodPage} pages={prodPages} onChange={setProdPage} /></div>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ color: H.sub, fontSize: 12, fontWeight: 600 }}>Tráfego por país</span>
+                <span className="tt-cap">24h</span>
+              </div>
+              <div className="tt-inset" style={{ marginTop: 8, padding: 4 }}>
+                {t.countries.length === 0 ? <Empty pad={70}>Sem tráfego capturado ainda.</Empty> : <WorldMap counts={t.byCountry} height={200} />}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 6, marginTop: 8 }}>
+                {topCountries.map(cc => (
+                  <div key={cc} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 11.5, color: H.sub, padding: '4px 2px' }}>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{flag(cc)} {countryName(cc)}</span>
+                    <span className="tt-num" style={{ fontSize: 11.5 }}>{events.length ? Math.round((t.byCountry[cc] / events.length) * 100) : 0}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      {/* Linha 3 — logs */}
+      <Panel>
+        <PanelHead
+          title="Logs"
+          sub={<>Tráfego e bots · {paused ? 'pausado' : 'ao vivo'} · últimas 24h</>}
+          right={
+            <button className="tt-btn" onClick={togglePause} style={{ fontSize: 12 }}>
+              {paused ? <Play size={13} /> : <Pause size={13} />}
+              {paused ? `Retomar${buffered ? ` (+${buffered})` : ''}` : 'Pausar ao vivo'}
+            </button>
+          }
+        />
+        <div style={{ display: 'flex', gap: 8, padding: '12px 18px 0', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '1 1 280px' }}>
+            <Search size={13} style={{ position: 'absolute', left: 11, top: 12, color: H.muted }} />
+            <input className="tt-input" style={{ paddingLeft: 32 }} value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar IP, página ou UTM..." />
+          </div>
+          <select className="tt-select" style={{ width: 180 }} value={fCountry} onChange={e => setFCountry(e.target.value)}>
+            <option value="todos">Todos os países</option>
+            {t.countries.map(c => <option key={c} value={c}>{flag(c)} {countryName(c)}</option>)}
+          </select>
+          <select className="tt-select" style={{ width: 180 }} value={fSource} onChange={e => setFSource(e.target.value)}>
+            <option value="todas">Todas as origens</option>
+            {t.sources.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        <div className="hk-logs" style={{ padding: 18 }}>
+          <div className="tt-inset" style={{ padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <Gauge value={filteredEvents.length} ratio={events.length ? filteredEvents.filter(e => e.action === 'allow').length / Math.max(filteredEvents.length, 1) : 0} label="requisições" />
+            <div style={{ width: '100%' }}>
+              <MeterRow label="Requisições" value={filteredEvents.length} total={filteredEvents.length} />
+              <MeterRow label="Permitidos" value={filteredEvents.filter(e => e.action === 'allow').length} total={filteredEvents.length} />
+              <MeterRow label="Negados" value={filteredEvents.filter(e => e.action !== 'allow').length} total={filteredEvents.length} />
+            </div>
+          </div>
+
+          <LogColumn icon={Bot} title="Bots" count={filteredEvents.filter(e => e.action !== 'allow').length} empty="Nenhum bot ou acesso negado.">
+            {bots.map(e => (
+              <LogRow key={e.id} e={e}
+                title={<><span style={{ color: e.action === 'challenge' ? H.amber : H.red }}>{actionLabel(e.action)}</span> <span style={{ color: H.muted }}>·</span> <span className="tt-mono" style={{ fontSize: 11 }}>{e.path || '/'}</span></>}
+                line2={<span style={{ color: H.muted }}>{e.reason || `risco ${e.risk_score ?? 0}`}</span>} />
+            ))}
+          </LogColumn>
+
+          <LogColumn icon={UserRound} title="Tráfego real" count={filteredEvents.filter(e => e.action === 'allow').length} empty="Nenhuma navegação real ainda.">
+            {real.map(e => (
+              <LogRow key={e.id} e={e}
+                title={<><span>{eventLabel(e, t.firstIds.has(e.id))}</span> <span className="tt-mono" style={{ fontSize: 11, color: H.sub, fontWeight: 400 }}>{e.path || '/'}</span></>}
+                line2={
+                  <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                    {[e.utm_source, e.utm_medium, e.utm_campaign, e.utm_content].filter(Boolean).length === 0
+                      ? <span className="tt-chip">Direto · sem UTM</span>
+                      : [e.utm_source, e.utm_medium, e.utm_campaign, e.utm_content].filter(Boolean).map((u, i) => <span key={i} className="tt-chip">{u}</span>)}
+                  </span>
+                } />
+            ))}
+          </LogColumn>
+        </div>
+        <div className="tt-cap" style={{ padding: '0 18px 14px', textAlign: 'right' }}>
+          Mostrando {Math.min(7, bots.length) + Math.min(7, real.length)} de {num(filteredEvents.length)} eventos · <a href="/traffic/logs" style={{ color: H.lav }}>abrir explorador</a>
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
+function LogColumn({ icon: Icon, title, count, empty, children }: { icon: any; title: string; count: number; empty: string; children: React.ReactNode }) {
+  const has = Array.isArray(children) ? children.length > 0 : !!children
+  return (
+    <div className="tt-inset" style={{ overflow: 'hidden', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', borderBottom: `1px solid ${H.lineSoft}` }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 700, color: H.text }}>
+          <span style={{ width: 22, height: 22, borderRadius: 6, display: 'grid', placeItems: 'center', background: 'rgba(163,167,242,.14)' }}><Icon size={12} color={H.lav} /></span>
+          {title}
+        </span>
+        <span className="tt-num" style={{ fontSize: 12, color: H.sub }}>{num(count)}</span>
+      </div>
+      {has ? children : <Empty pad={40}>{empty}</Empty>}
+    </div>
+  )
+}
+
+function LogRow({ e, title, line2 }: { e: Ev; title: React.ReactNode; line2: React.ReactNode }) {
+  return (
+    <div className="hk-row-in" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${H.lineSoft}` }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: H.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+        <div style={{ fontSize: 11, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{line2}</div>
+      </div>
+      <div style={{ textAlign: 'right', fontSize: 10.5, color: H.muted, lineHeight: 1.5 }}>
+        <div title={countryName(e.country)}>{flag(e.country)} {e.country || '—'} <span className="tt-mono">{e.ip || ''}</span></div>
+        <div className="tt-mono">{timeHMS(e.created_at)}</div>
+      </div>
     </div>
   )
 }

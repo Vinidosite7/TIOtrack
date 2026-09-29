@@ -1,0 +1,19 @@
+name = "tiotrack-traffic-edge"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "TRAFFIC_RULES"
+id = "SEU_KV_NAMESPACE_ID"
+
+[vars]
+COLLECTOR_URL = "https://SEU-TIOTRACK.com/api/traffic/collect"
+TRACKER_URL = "https://SEU-TIOTRACK.com/tiotrack.js"
+RULE_CACHE_TTL_SECONDS = "30"
+
+# EDGE_LOG_SECRET deve ser cadastrado como secret:
+# npx wrangler secret put EDGE_LOG_SECRET
+#
+# ORIGIN_URL e WORKSPACE_ID não são mais necessários no modo multi-tenant.
+# Eles continuam aceitos apenas como fallback do setup antigo.
